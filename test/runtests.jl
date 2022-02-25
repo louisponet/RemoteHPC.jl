@@ -32,3 +32,8 @@ using RemoteHPC
     @test calcs[1] == c[1]
     @test calcs[2] == c[2]
 end
+
+@testset "execs" begin
+    e = RemoteHPC.Exec(name="test", exec="ls")
+    @test RemoteHPC.isrunnable(e)
+end
