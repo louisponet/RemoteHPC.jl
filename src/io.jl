@@ -33,8 +33,11 @@ end
 
 function Base.print(io::IO, c::Calculation)
     print(io, c.exec)
+    if c.exec.input_redirect
+        print(io, "< ")
+    end
     if !isempty(c.infile)
-        print(io, "< $(c.infile)")
+        print(io, "$(c.infile)")
     end
     if !isempty(c.outfile)
         print(io, " > $(c.outfile)")

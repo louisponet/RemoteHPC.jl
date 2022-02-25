@@ -19,6 +19,7 @@ Will first transform `flags` into a `Vector{ExecFlag}`, and construct the [`Exec
     dir::String = ""
     flags::Dict = Dict()
     modules::Vector{String} = String[]
+    input_redirect::Bool = true
     parallel::Bool = true
 end
 
