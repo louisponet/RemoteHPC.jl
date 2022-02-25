@@ -34,6 +34,6 @@ using RemoteHPC
 end
 
 @testset "execs" begin
-    e = RemoteHPC.Exec(name="test", exec="ls")
+    e = RemoteHPC.Exec(name="test", dir = Sys.BINDIR, exec="julia")
     @test RemoteHPC.isrunnable(e)
 end
