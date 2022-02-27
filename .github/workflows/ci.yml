@@ -28,7 +28,7 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - name: Install Docker
-        run: apt-get install docker
+        run: sudo apt-get install docker
       - name: Start Slurm Docker image
         run: |
           docker pull giovtorres/docker-centos7-slurm:$SLURM
