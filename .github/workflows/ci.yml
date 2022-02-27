@@ -18,12 +18,8 @@ jobs:
           - '1.4'
           - '1.7'
           - 'nightly'
-        os:
-          - ubuntu-latest
-          - macOS-latest
-        arch:
-          - x86
-          - x64
+        os: [ubuntu-latest]
+        julia_arch: [x64]
         exclude:
           # Remove some configurations from the build matrix to reduce CI time.
           # See https://github.com/marketplace/actions/setup-julia-environment
@@ -40,6 +36,8 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
+      - name: Install Docker
+        run: apt-install docker
       - name: Start Slurm Docker image
         run: |
           docker pull giovtorres/docker-centos7-slurm:$SLURM
@@ -51,6 +49,7 @@ jobs:
       - uses: julia-actions/julia-uploadcodecov@latest
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
   docs:
     name: Documentation
     runs-on: ubuntu-latest
