@@ -19,7 +19,7 @@ jobs:
           - '1.7'
           - 'nightly'
         os: [ubuntu-latest]
-        julia_arch: [x64]
+        arch: [x64]
 
     steps:
       - uses: actions/checkout@v2.2.0
