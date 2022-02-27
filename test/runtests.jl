@@ -2,7 +2,7 @@ using Test
 using RemoteHPC
 
 @testset "script io" begin
-    exec = RemoteHPC.Exec("test", "test.x", "test/bin", Dict("f" => 3, "test" => [1, 2, 3], "test2" => "stringtest", "-nk" => 10), ["intel", "intel-mkl"], true)
+    exec = RemoteHPC.Exec("test", "test.x", "test/bin", Dict("f" => 3, "test" => [1, 2, 3], "test2" => "stringtest", "-nk" => 10), ["intel", "intel-mkl"], true, true)
 
     e = RemoteHPC.SlurmEnvironment("test", Dict("N" => 3, "partition" => "default", "time" => "00:01:01"), Dict("OMP_NUM_THREADS" => 1), "", "", RemoteHPC.Exec(name = "srun", exec="srun"))
 
@@ -34,6 +34,7 @@ using RemoteHPC
 end
 
 @testset "execs" begin
-    e = RemoteHPC.Exec(name="test", dir = Sys.BINDIR, exec="julia")
-    @test RemoteHPC.isrunnable(e)
+    e = RemoteHPC.Exec(name="test", dir = Sys.BINDIR, exec="julia", parallel=false, input_redirect=false)
+    t = RemoteHPC.isrunnable(e)
+    @test t
 end
