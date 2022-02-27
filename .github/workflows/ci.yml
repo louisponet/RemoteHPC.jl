@@ -7,6 +7,7 @@ on:
   pull_request:
 jobs:
   test:
+    needs: [check-requirements]
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.version == 'nightly' }}
