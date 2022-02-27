@@ -7,10 +7,11 @@ on:
   pull_request:
 jobs:
   test:
-    needs: [check-requirements]
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.version == 'nightly' }}
+    env:
+        SLURM: "latest"
     strategy:
       matrix:
         version:
@@ -32,11 +33,6 @@ jobs:
           - {os: 'macOS-latest', version: '1.1'}
           - {os: 'macOS-latest', version: '1.2'}
           - {os: 'macOS-latest', version: '1.3'}
-    services:
-        slurm:
-            image: xenonmiddleware/slurm:17
-            ports:
-                - 5001:22
 
     steps:
       - uses: actions/checkout@v1
@@ -44,8 +40,14 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
-      - uses: julia-actions/julia-buildpkg@latest
-      - uses: julia-actions/julia-runtest@latest
+      - name: Start Slurm Docker image
+        run: |
+          docker pull giovtorres/docker-centos7-slurm:$SLURM
+          docker run -d -it -h ernie -v $(pwd):/SlurmTools -v $(julia -e 'print(dirname(Sys.BINDIR))'):/julia --name slurm-$SLURM giovtorres/docker-centos7-slurm:$SLURM
+	  - name: Instantiate package
+	    run: docker exec slurm-$SLURM /julia/bin/julia --project=/SlurmTools -e 'using Pkg; Pkg.instantiate(verbose=true); Pkg.build(verbose=true)'
+      - name: Run Tests
+        run: docker exec slurm-$SLURM /julia/bin/julia --project=/SlurmTools -e 'using Pkg; Pkg.test()'
       - uses: julia-actions/julia-uploadcodecov@latest
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
