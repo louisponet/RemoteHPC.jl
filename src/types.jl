@@ -1,3 +1,5 @@
+@enum JobState BootFail Pending Running Completed Cancelled Deadline Failed NodeFail OutOfMemory Preempted Requeued Resizing Revoked Suspended Timeout Submitted Unknown PostProcessing Saved
+
 """
     Exec(;name::String = "",
           exec::String = "",
@@ -13,24 +15,18 @@ Basically `dir/exec --<flags>` inside a job script.
 
 Will first transform `flags` into a `Vector{ExecFlag}`, and construct the [`Exec`](@ref). 
 """
-@kwdef mutable struct Exec
+@kwdef mutable struct Exec <: Storable
     name::String = ""
     exec::String = ""
     dir::String = ""
     flags::Dict = Dict()
     modules::Vector{String} = String[]
-    input_redirect::Bool = true
+    input_on_stdin::Bool = true
     parallel::Bool = true
 end
-
-function Base.:(==)(e1::Exec, e2::Exec)
-    for f in fieldnames(Exec)
-        if getfield(e1, f) != getfield(e2, f)
-            return false
-        end
-    end
-    return true
-end
+Base.:(==)(e1::Exec, e2::Exec) = e1.name == e2.name
+storage_directory(::Exec) = "execs"
+StructTypes.StructType(::Exec) = StructTypes.Mutable()
 
 function isrunnable(e::Exec)
     # To find the path to then ldd on
@@ -63,12 +59,17 @@ end
     outfile::String = ""
     run::Bool = true
 end
+StructTypes.StructType(::Calculation) = StructTypes.Mutable()
 
-function Base.:(==)(e1::Calculation, e2::Calculation)
-    for f in fieldnames(Calculation)
-        if getfield(e1, f) != getfield(e2, f)
-            return false
-        end
-    end
-    return true
+@kwdef struct Environment <: Storable
+    name::String
+    directives::Dict = Dict()
+    exports::Dict = Dict()
+    preamble::String = ""
+    postamble::String = ""
+    parallel_exec::Exec = Exec(name="srun", exec="srun")
 end
+Base.:(==)(e1::Environment, e2::Environment) = e1.name == e2.name
+storage_directory(::Environment) = "environments"
+
+StructTypes.StructType(::Environment) = StructTypes.Mutable()

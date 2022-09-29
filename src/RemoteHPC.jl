@@ -1,15 +1,62 @@
 module RemoteHPC
-
+using LoggingExtras
+using ThreadPools
+using HTTP
+using StructTypes
+using Sockets
+using JSON3
+using UUIDs
+using Dates
+using ProgressMeter
+using SnoopPrecompile
 using Base: @kwdef
 
-include("storage.jl")
+const CONFIG_DIR = occursin("cache", first(Base.DEPOT_PATH)) ?
+                   abspath(Base.DEPOT_PATH[2], "config", "RemoteHPC") :
+                   abspath(Base.DEPOT_PATH[1], "config", "RemoteHPC")
 
-abstract type Environment end
-include("calculations.jl")
-include("environments.jl")
-include("jobs.jl")
+config_path(path...) = joinpath(CONFIG_DIR, gethostname(), path...)
+
+include("database.jl")
+
+include("types.jl")
+include("schedulers.jl")
+include("servers.jl")
+include("runtime.jl")
+include("api.jl")
+include("client.jl") 
 include("io.jl")
-include("Schedulers/Schedulers.jl")
 
+function __init__()
+    if !exists(Server(name=gethostname()))
+        configure_local(;interactive=false)
+    end
+end
+
+@precompile_all_calls begin
+    s = local_server()
+    redirect_stderr(devnull) do
+        if !isalive(s)
+            @async run_server()
+        end
+    end
+    t = "asdfe"
+    t2 = "edfasdf"
+    e = Exec(name = "$t2", exec="srun")
+    e1 = Environment("$t", Dict("-N" => 3, "partition" => "default", "time" => "00:01:01"), Dict("OMP_NUM_THREADS" => 1), "", "", e)
+    save(s, e1)
+    save(s, e)
+    e1 = load(s, e1)
+    e = load(s, e)
+    calcs = [Calculation(e, "scf.in", "scf.out", true)]
+    tdir = tempname()
+    save(s, tdir, "test", e1, calcs)
+    load(s, tdir)
+    rm(s, tdir)
+    rm(s, e1)
+    rm(s, e)
+end
+
+export Server, start, local_server, isalive, load, save
 
 end # module RemoteHPC
