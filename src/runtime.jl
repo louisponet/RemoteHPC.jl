@@ -205,45 +205,6 @@ function job_logger(id::Int)
     FileLogger(joinpath(p, "$id.log"))
 end
 
-function run_server()
-    # initialize_config_dir()
-    s = Server(gethostname())
-    port, server = listenany(ip"0.0.0.0", 8080)
-    s.port = port
-    user_uuid = UUID(s.uuid)
-    
-    router = HTTP.Router()
-    submit_channel = Channel{String}(Inf)
-    job_queue = Queue()
-    setup_core_api!(router)
-    setup_environment_api!(router)
-    setup_job_api!(router, submit_channel, job_queue, s.scheduler)
-    setup_database_api!(router)
-    
-    should_stop = false 
-    HTTP.register!(router, "PUT", "/kill_server", (req) -> should_stop=true)
-
-    @tspawnat min(Threads.nthreads(), 2) with_logger(server_logger()) do
-        try
-            main_loop(s, submit_channel, job_queue)
-        catch e
-            @error e, stacktrace(catch_backtrace())
-            rethrow(e)
-        end
-    end
-    save(s)
-   
-    with_logger(restapi_logger()) do
-        @info (timestamp = string(Dates.now()), username = ENV["USER"], host = gethostname(), pid=getpid(), port=port)
-        
-        t = @async HTTP.serve(router |> requestHandler |> x -> AuthHandler(x, user_uuid), "0.0.0.0", port, server=server)
-        while !should_stop
-            sleep(1)
-        end
-    end
-    close(server)
-end
-
 function requestHandler(handler)
     return function f(req)
         start = Dates.now()
@@ -288,4 +249,44 @@ function AuthHandler(handler, user_uuid::UUID)
         return HTTP.Response(401, "unauthorized")
     end
 end     
+
+function julia_main()::Cint
+    # initialize_config_dir()
+    s = Server(gethostname())
+    port, server = listenany(ip"0.0.0.0", 8080)
+    s.port = port
+    user_uuid = UUID(s.uuid)
+    
+    router = HTTP.Router()
+    submit_channel = Channel{String}(Inf)
+    job_queue = Queue()
+    setup_core_api!(router)
+    setup_environment_api!(router)
+    setup_job_api!(router, submit_channel, job_queue, s.scheduler)
+    setup_database_api!(router)
+    
+    should_stop = false 
+    HTTP.register!(router, "PUT", "/kill_server", (req) -> should_stop=true)
+
+    @tspawnat min(Threads.nthreads(), 2) with_logger(server_logger()) do
+        try
+            main_loop(s, submit_channel, job_queue)
+        catch e
+            @error e, stacktrace(catch_backtrace())
+            rethrow(e)
+        end
+    end
+    save(s)
+   
+    with_logger(restapi_logger()) do
+        @info (timestamp = string(Dates.now()), username = ENV["USER"], host = gethostname(), pid=getpid(), port=port)
+        
+        t = @async HTTP.serve(router |> requestHandler |> x -> AuthHandler(x, user_uuid), "0.0.0.0", port, server=server)
+        while !should_stop
+            sleep(1)
+        end
+    end
+    close(server)
+    return 0
+end
 

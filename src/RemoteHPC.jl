@@ -27,12 +27,6 @@ include("api.jl")
 include("client.jl") 
 include("io.jl")
 
-function __init__()
-    if !exists(Server(name=gethostname()))
-        configure_local(;interactive=false)
-    end
-end
-
 @precompile_all_calls begin
     s = local_server()
     # redirect_stderr(devnull) do

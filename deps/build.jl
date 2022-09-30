@@ -13,3 +13,40 @@ paths = ["jobs",
 for p in paths             
     mkpath(config_path(p))
 end
+
+using UUIDs, JSON3
+
+"""
+    configure_local()
+
+Runs through interactive configuration of the local [`Server`](@ref).
+"""
+function configure_local()
+    host = gethostname()
+    spath = config_path("storage/servers/$host.json")
+    if !ispath(spath)
+        scheduler = nothing
+        if haskey(ENV, "DFC_SCHEDULER")
+             
+            sched = ENV["DFC_SCHEDULER"]
+            if occursin("hq", lowercase(sched))
+                cmd = get(ENV, "DFC_SCHEDULER_CMD", "hq")
+                scheduler = (type="hq", server_command=cmd, allocs=String[])
+            elseif lowercase(sched) == "slurm"
+                scheduler = (type="slurm",)
+            else
+                error("Scheduler $sched not recognized please set a different DFC_SCHEDULER environment var.")
+            end
+        end
+                
+        for t in ("hq", "sbatch")
+            if Sys.which(t) !== nothing
+                scheduler = t == "hq" ? (type="hq", server_command="hq", allocs=String[]) : (type="slurm",)
+            end
+        end
+        scheduler = scheduler === nothing ? (type="bash", ) : scheduler
+        user = get(ENV, "USER", "noname")
+        JSON3.write(spath, (name=host, username=user, domain="localhost", julia_exec=joinpath(Sys.BINDIR, "julia"), scheduler=scheduler, port=8080, local_port=0, root_jobdir=homedir(), max_concurrent_jobs=100, uuid=string(uuid4())))
+    end
+end
+configure_local()

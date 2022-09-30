@@ -52,9 +52,9 @@ function start(s::Server)
     firstime = checktime()
 
     p = "~/.julia/config/RemoteHPC/$hostname/logs/errors.log"
-    scrpt = "using RemoteHPC; RemoteHPC.run_server()"
+    scrpt = "using RemoteHPC; RemoteHPC.julia_main()"
     if s.domain != "localhost"
-        julia_cmd = replace("""$(s.julia_exec) --startup-file=no -t 10 -e "using RemoteHPC; RemoteHPC.run_server()" &> $p""", "'" => "")
+        julia_cmd = replace("""$(s.julia_exec) --startup-file=no -t 10 -e "using RemoteHPC; RemoteHPC.julia_main()" &> $p""", "'" => "")
         run(Cmd(`ssh -f $(ssh_string(s)) $julia_cmd`, detach=true))
     else
         e = s.julia_exec
