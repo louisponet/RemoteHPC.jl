@@ -126,9 +126,18 @@ end
 
 function load(s::Server, dir::AbstractString)
     adir = abspath(s, dir)
-    resp = HTTP.get(s, "/job/" * adir)
-    info, name, environment, calculations = JSON3.read(resp.body, Tuple{Job, String, Environment, Vector{Calculation}}) 
-    return (;info, name, environment, calculations)
+    if !ispath(s, joinpath(adir, ".remotehpc_info"))
+        resp = HTTP.get(s, "/jobs/fuzzy/", dir)
+        return JSON3.read(resp.body, Vector{String})
+    else
+        resp = HTTP.get(s, "/job/" * adir)
+        info, name, environment, calculations = JSON3.read(resp.body, Tuple{Job, String, Environment, Vector{Calculation}}) 
+        return (;info, name, environment, calculations)
+    end
+end
+function load(s::Server, state::JobState)
+    resp = HTTP.get(s, "/jobs/state/", state)
+    return JSON3.read(resp.body, Vector{String})
 end
 
 function submit(s::Server, dir::AbstractString)

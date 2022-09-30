@@ -85,7 +85,7 @@ function get_jobs(state::JobState, queue::Queue)
     jobs = String[]
     for q in (queue.info.full_queue, queue.info.current_queue)
         for (d, j) in q
-            if job.state == state
+            if j.state == state
                 push!(jobs, d)
             end
         end
@@ -145,7 +145,7 @@ function setup_job_api!(router::HTTP.Router, submit_channel, queue::Queue, sched
     HTTP.register!(router, "GET", "/jobs/state",
         (req) -> get_jobs(JSON3.read(req.body, JobState), queue))
     HTTP.register!(router, "GET", "/jobs/fuzzy",
-        (req) -> get_jobs(read(req.body, String), queue))
+        (req) -> get_jobs(JSON3.read(req.body, String), queue))
     HTTP.register!(router, "POST", "/abort/**", (req) -> abort(req, queue, scheduler))
 end
 
