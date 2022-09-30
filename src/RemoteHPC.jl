@@ -35,11 +35,11 @@ end
 
 @precompile_all_calls begin
     s = local_server()
-    redirect_stderr(devnull) do
+    # redirect_stderr(devnull) do
         if !isalive(s)
             @async run_server()
         end
-    end
+    # end
     t = "asdfe"
     t2 = "edfasdf"
     e = Exec(name = "$t2", exec="srun")
@@ -57,6 +57,7 @@ end
     rm(s, e)
 end
 
-export Server, start, local_server, isalive, load, save
+export Server, start, restart, local_server, isalive, load, save, submit, abort, state
+export Calculation, Environment, Exec
 
 end # module RemoteHPC

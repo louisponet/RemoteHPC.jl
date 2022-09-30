@@ -86,7 +86,7 @@ function start(s::Server)
         @info "Saving updated server info..."
         save(s)
     end
-    return
+    return s
 end
 
 """
@@ -98,6 +98,9 @@ Base.kill(s::Server) = HTTP.put(s, "/kill_server")
 
 function restart(s::Server)
     kill(s)
+    while isalive(s)
+        sleep(0.1)
+    end
     return start(s)
 end
 
@@ -115,12 +118,40 @@ function isalive(s::Server)
     end
 end
 
-function save(s::Server, dir::String, n::String, e::Environment, calcs::Vector{Calculation})
+function save(s::Server, dir::AbstractString, n::AbstractString, e::Environment, calcs::Vector{Calculation})
     adir = abspath(s, dir)
     HTTP.post(s, "/job/" * adir, (n, e, calcs))
-end 
-function load(s::Server, dir::String)
+    return adir
+end
+
+function load(s::Server, dir::AbstractString)
     adir = abspath(s, dir)
     resp = HTTP.get(s, "/job/" * adir)
-    return JSON3.read(resp.body, NamedTuple{(:info, :name, :environment, :calculations), Tuple{Job, String, Environment, Vector{Calculation}}})
-end 
+    info, name, environment, calculations = JSON3.read(resp.body, Tuple{Job, String, Environment, Vector{Calculation}}) 
+    return (;info, name, environment, calculations)
+end
+
+function submit(s::Server, dir::AbstractString)
+    adir = abspath(s, dir)
+    HTTP.put(s, "/job/" * adir)
+end
+function submit(s::Server, dir::AbstractString, n::AbstractString, args...)
+    adir = save(s, dir, n, args...)
+    submit(s, adir)
+    return adir
+end
+
+function abort(s::Server, dir::AbstractString)
+    adir = abspath(s, dir)
+    resp = HTTP.post(s, "/abort/" *adir)
+    if resp.status == 200
+        id = JSON3.read(resp.body, Int)
+        @info "Aborted job with id $id."
+    else
+        return resp
+    end
+end
+
+function state(s::Server, dir::AbstractString)
+    return load(s, dir).info.state
+end

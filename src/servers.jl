@@ -265,7 +265,7 @@ function load_config(username, domain)
     if domain == "localhost"
         return parse_config(read(config_path("storage","servers","$hostname.json"),String))
     else
-        t = server_command(username, domain, "cat ~/.julia/config/DFControl/$hostname/storage/servers/$hostname.json")
+        t = server_command(username, domain, "cat ~/.julia/config/RemoteHPC/$hostname/storage/servers/$hostname.json")
         if t.exitcode != 0
             return nothing
         else

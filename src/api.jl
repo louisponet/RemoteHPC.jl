@@ -70,16 +70,15 @@ function setup_environment_api!(router::HTTP.Router)
     HTTP.register!(router, "POST", "/environment/", add_environment)
 end 
 
-abort_job(req, sched)  = abort(sched, path(req))
 submit_job(req, channel) = put!(channel, path(req))
 
-function get_job(job_dir::AbstractString, queue::Queue, sched::Scheduler)
+function get_job(job_dir::AbstractString, queue::Queue)
     info = get(queue.info.current_queue, job_dir, nothing)
     if info === nothing
         info = get(queue.info.full_queue, job_dir, nothing)
     end
-        
-    return (info=info, parse_script(read(joinpath(job_dir, "job.sh"), String), sched)...)
+    
+    return (info, JSON3.read(read(joinpath(job_dir, ".remotehpc_info")), Tuple{String, Environment, Vector{Calculation}})...)
 end
 
 function get_jobs(state::JobState, queue::Queue)
@@ -117,20 +116,37 @@ function save_job(dir::AbstractString, job_info::Tuple, queue::Queue, sched::Sch
     open(joinpath(dir, "job.sh"), "w") do f
         write(f, job_info, sched)
     end
+    JSON3.write(joinpath(dir, ".remotehpc_info"), job_info) 
     lock(queue) do q
         q.full_queue[dir] = Job(-1, Saved)
     end
 end
-    
+
+function abort(req::HTTP.Request, queue::Queue, sched::Scheduler)
+    jdir = path(req)
+    j = get(queue.info.current_queue, jdir, nothing)
+    if j === nothing
+        error("No Job is running at $jdir.")
+    end
+    abort(sched, j.id)
+    lock(queue) do q
+        j = pop!(q.current_queue, jdir)
+        j.state = Cancelled
+        q.full_queue[jdir] = j
+    end
+        
+    return j.id
+end
+
 function setup_job_api!(router::HTTP.Router, submit_channel, queue::Queue, scheduler::Scheduler)
     HTTP.register!(router, "POST", "/job/**", (req) -> save_job(req, queue, scheduler))
-    HTTP.register!(router, "PUT", "/job/**", (req) -> submit_job(req, channel))
-    HTTP.register!(router, "GET", "/job/**", (req) -> get_job(path(req), queue, scheduler))
+    HTTP.register!(router, "PUT", "/job/**", (req) -> submit_job(req, submit_channel))
+    HTTP.register!(router, "GET", "/job/**", (req) -> get_job(path(req), queue))
     HTTP.register!(router, "GET", "/jobs/state",
         (req) -> get_jobs(JSON3.read(req.body, JobState), queue))
     HTTP.register!(router, "GET", "/jobs/fuzzy",
         (req) -> get_jobs(read(req.body, String), queue))
-    HTTP.register!(router, "GET", "/abort/**", (req) -> abort(scheduler, path(req)))
+    HTTP.register!(router, "POST", "/abort/**", (req) -> abort(req, queue, scheduler))
 end
 
 function load(req::HTTP.Request)

@@ -1,4 +1,4 @@
-@enum JobState BootFail Pending Running Completed Cancelled Deadline Failed NodeFail OutOfMemory Preempted Requeued Resizing Revoked Suspended Timeout Submitted Unknown PostProcessing Saved
+@enum JobState BootFail Pending Running Completed Cancelled Deadline Failed NodeFail OutOfMemory Preempted Requeued Resizing Revoked Suspended Timeout Submitted Unknown PostProcessing Saved Configuring Completing
 
 """
     Exec(;name::String = "",
@@ -24,6 +24,7 @@ Will first transform `flags` into a `Vector{ExecFlag}`, and construct the [`Exec
     input_on_stdin::Bool = true
     parallel::Bool = true
 end
+Exec(str::String;kwargs...) = Exec(name=str; kwargs...)
 Base.:(==)(e1::Exec, e2::Exec) = e1.name == e2.name
 storage_directory(::Exec) = "execs"
 StructTypes.StructType(::Exec) = StructTypes.Mutable()
@@ -67,9 +68,11 @@ StructTypes.StructType(::Calculation) = StructTypes.Mutable()
     exports::Dict = Dict()
     preamble::String = ""
     postamble::String = ""
-    parallel_exec::Exec = Exec(name="srun", exec="srun")
+    parallel_exec::Exec = Exec()
 end
+Environment(name::String; kwargs...) = Environment(name=name; kwargs...)
 Base.:(==)(e1::Environment, e2::Environment) = e1.name == e2.name
 storage_directory(::Environment) = "environments"
+
 
 StructTypes.StructType(::Environment) = StructTypes.Mutable()

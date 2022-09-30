@@ -23,7 +23,7 @@ StructTypes.StructType(::Type{Slurm}) = StructTypes.Struct()
 StructTypes.StructType(::Type{HQ})    = StructTypes.Struct()
 StructTypes.subtypekey(::Type{Scheduler}) = :type
 
-submit(::S, ::String) where {S<:Scheduler} = error("No submit method defined for $S.")
+submit(::S, ::AbstractString) where {S<:Scheduler} = error("No submit method defined for $S.")
 abort(::S, ::Int)     where {S<:Scheduler} = error("No abort method defined for $S.")
 jobstate(::S, ::Any)  where {S<:Scheduler} = error("No jobstate method defined for $S.")
 
@@ -47,9 +47,9 @@ directive_prefix(::Slurm) = "#SBATCH"
 directive_prefix(::Bash) = "#"
 directive_prefix(::HQ) = "#HQ"
 
-name_directive(::Slurm) = "job-name"
+name_directive(::Slurm) = "#SBATCH --job-name"
 name_directive(::Bash) = "job-name"
-name_directive(::HQ) = "name"
+name_directive(::HQ) = "#HQ --name"
 
 function parse_params(sched::Scheduler, preamble::String)
     m = match(r"$(directive_prefix(sched)) (.+)\n", preamble)
@@ -111,12 +111,23 @@ end
 
 function jobstate(s::Slurm, id::Int)
     cmd = `sacct -u $(ENV["USER"]) --format=State -j $id -P`
+    st = Unknown
     try
         lines = readlines(cmd)
-        if length(lines) <= 1
-            return Unknown
+        if length(lines) > 1
+            st = jobstate(s, lines[2])
         end
-        return jobstate(s, lines[2])
+    catch
+        nothing
+    end
+    st != Unknown && return st
+    
+    cmd = `scontrol show job $id`
+    try
+        lines = read(cmd, String)
+        reg = r"JobState=(\w+)\b"
+        m = match(reg, lines)
+        return jobstate(s, m[1])
     catch
         return Unknown
     end
@@ -164,7 +175,7 @@ end
 submit(::Slurm, j::AbstractString) =
     parse(Int, split(read(Cmd(`sbatch job.sh`, dir=j), String))[end])
 
-abort(s::Slurm, id::Int) = 
+abort(::Slurm, id::Int) = 
     run(`scancel $id`)
 
 #### HQ

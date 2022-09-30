@@ -27,13 +27,14 @@ function Base.lock(f::Function, q::Queue)
     end
 end
 
-function Base.fill!(queue::Queue, s::Scheduler, init)
+function Base.fill!(qu::Queue, s::Scheduler, init)
+    qfile = config_path("jobs", "queue.json")
     if init
-        if ispath(QUEUE_FILE())
-            t = read(QUEUE_FILE())
+        if ispath(qfile)
+            t = read(qfile)
             if !isempty(t)
                 tq = JSON3.read(t, QueueInfo)
-                lock(queue) do q
+                lock(qu) do q
                     copy!(q.full_queue, tq.full_queue)
                     copy!(q.current_queue, tq.current_queue)
                     copy!(q.submit_queue, tq.submit_queue)
@@ -41,9 +42,9 @@ function Base.fill!(queue::Queue, s::Scheduler, init)
             end
         end
     end
-    lock(queue) do q
-        for qu in (q.full_queue, q.current_queue)
-            for (dir, info) in qu
+    lock(qu) do q
+        for q_ in (q.full_queue, q.current_queue)
+            for (dir, info) in q_
                 if !ispath(joinpath(dir, "job.sh"))
                     delete!(qu, dir)
                 end
@@ -52,10 +53,10 @@ function Base.fill!(queue::Queue, s::Scheduler, init)
     end
     # Here we check whether the scheduler died while the server was running and try to restart and resubmit   
     if maybe_scheduler_restart(s)
-        lock(queue) do q
+        lock(qu) do q
             for (d, i) in q.current_queue
                 if ispath(joinpath(d, "job.sh"))
-                    q.full_queue[d] = (-1, Saved)
+                    q.full_queue[d] = Job(-1, Saved)
                     push!(q.submit_queue, d)
                 end
                 pop!(q.current_queue, d)
@@ -63,27 +64,27 @@ function Base.fill!(queue::Queue, s::Scheduler, init)
         end
     else
         squeue = queue(s)
-        lock(queue) do q 
+        lock(qu) do q 
             for (d, i) in q.current_queue
                 if haskey(squeue, d)
                     state = pop!(squeue, d)[2]
                 else
-                    state = jobstate(s, i[1])
+                    state = jobstate(s, i.id)
                 end
                 if in_queue(state)
                     delete!(q.full_queue, d)
-                    q.current_queue[d] = (i[1], state)
+                    q.current_queue[d] = Job(i.id, state)
                 else
                     delete!(q.current_queue, d)
-                    q.full_queue[d] = (i[1], state)
+                    q.full_queue[d] = Job(i.id, state)
                 end
             end
             for (k, v) in squeue
-                q.current_queue[k] = v
+                q.current_queue[k] = Job(v...)
             end
        end 
     end
-    return queue
+    return qu
 end
 
 function main_loop(s::Server, submit_channel, queue)
@@ -92,23 +93,22 @@ function main_loop(s::Server, submit_channel, queue)
 
     # Used to identify if multiple servers are running in order to selfdestruct 
     log_mtimes = mtime.(joinpath.((config_path("logs/runtimes/"),), readdir(config_path("logs/runtimes/"))))
-
     t = Threads.@spawn while true
         try
             fill!(queue, s.scheduler, false)
             JSON3.write(config_path("jobs", "queue.json"), queue.info)
         catch e
-            @error "queue error" e
+            @error "Queue error:" e stacktrace(catch_backtrace())
         end
-        sleep(SLEEP_TIME)
+        sleep(5)
     end
     Threads.@spawn while true
         try
             handle_job_submission!(queue, s, submit_channel)
         catch e
-            @error "job submission error" e
+            @error "Job submission error:" e stacktrace(catch_backtrace())
         end
-        sleep(SLEEP_TIME)
+        sleep(5)
     end
     Threads.@spawn while true
         monitor_issues(log_mtimes)
@@ -116,13 +116,13 @@ function main_loop(s::Server, submit_channel, queue)
         try  
             print_log(queue)
         catch
-            @error "logging error" e
+            @error "Logging error:" e stacktrace(catch_backtrace())
         end
         if ispath(config_path("self_destruct"))
             @info (timestamp = Dates.now(), message = "self_destruct found, self destructing...")
             exit()
         end
-        sleep(SLEEP_TIME)
+        sleep(5)
     end
     fetch(t)
 end
@@ -173,7 +173,7 @@ function handle_job_submission!(queue, s::Server, submit_channel)
                     curtries = -1
                 catch e
                     curtries += 1
-                    sleep(SLEEP_TIME)
+                    sleep(5)
                     @error e
                 end
             end
@@ -224,7 +224,12 @@ function run_server()
     HTTP.register!(router, "PUT", "/kill_server", (req) -> should_stop=true)
 
     @tspawnat min(Threads.nthreads(), 2) with_logger(server_logger()) do
-        main_loop(s, submit_channel, job_queue)
+        try
+            main_loop(s, submit_channel, job_queue)
+        catch e
+            @error e, stacktrace(catch_backtrace())
+            rethrow(e)
+        end
     end
     save(s)
    
