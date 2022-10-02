@@ -205,16 +205,10 @@ function Server(s::String)
         configure_local_port!(server)
     end
     save(server)
-    start_server = request("Start server?", RadioMenu(["yes", "no"]))
-    start_server == -1 && return
-    if start_server == 1
-        start(server)
-    end
     return server
 end
 
-
-StructTypes.StructType(::Type{Server}) = StructTypes.Struct()
+StructTypes.StructType(::Type{Server}) = StructTypes.Mutable()
 islocal(s::Server) = s.domain == "localhost"
 local_server() = Server(gethostname())
 
