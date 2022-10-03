@@ -26,7 +26,7 @@ function save(s::Storable)
     JSON3.write(p, s)
 end
 function save(server, s::Storable)
-    url = storage_url(s) 
+    url = storage_url(s)
     HTTP.post(server, url, s)
 end
 

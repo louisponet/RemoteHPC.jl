@@ -1,3 +1,26 @@
+function HTTP.request(method::String, s::Server, url, body; kwargs...)
+    header = ["Type" => replace("$(typeof(body))", "RemoteHPC."=>""), "USER-UUID" => s.uuid]
+    return HTTP.request(method, string(http_string(s), url), header, JSON3.write(body); kwargs...)
+end
+
+function HTTP.request(method::String, s::Server, url, body::Vector{UInt8}; kwargs...)
+    header = ["Type" => "$(typeof(body))", "USER-UUID" => s.uuid]
+    return HTTP.request(method, string(http_string(s), url), header, body; kwargs...)
+end
+
+function HTTP.request(method::String, s::Server, url; connect_timeout=1, retries=2, kwargs...)
+    header = ["USER-UUID" => s.uuid]
+    
+    return HTTP.request(method, string(http_string(s), url), header; connect_timeout=connect_timeout, retries=retries, kwargs...)
+end
+
+for f in (:get, :put, :post, :head, :patch)
+    str = uppercase(string(f))
+    @eval function HTTP.$(f)(s::Server, url::AbstractString, args...; kwargs...)
+        return HTTP.request("$($str)", s, url, args...; kwargs...)
+    end
+end
+
 """
     start(s::Server)
 

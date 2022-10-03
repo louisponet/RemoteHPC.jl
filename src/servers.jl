@@ -275,29 +275,6 @@ load_config(s::Server) =
 ssh_string(s::Server) = s.username * "@" * s.domain
 http_string(s::Server) = s.local_port != 0 ? "http://localhost:$(s.local_port)" : "http://$(s.domain):$(s.port)"
 
-function HTTP.request(method::String, s::Server, url, body; kwargs...)
-    header = ["Type" => replace("$(typeof(body))", "RemoteHPC."=>""), "USER-UUID" => s.uuid]
-    return HTTP.request(method, string(http_string(s), url), header, JSON3.write(body); kwargs...)
-end
-
-function HTTP.request(method::String, s::Server, url, body::Vector{UInt8}; kwargs...)
-    header = ["Type" => "$(typeof(body))", "USER-UUID" => s.uuid]
-    return HTTP.request(method, string(http_string(s), url), header, body; kwargs...)
-end
-
-function HTTP.request(method::String, s::Server, url; connect_timeout=1, retries=2, kwargs...)
-    header = ["USER-UUID" => s.uuid]
-    
-    return HTTP.request(method, string(http_string(s), url), header; connect_timeout=connect_timeout, retries=retries, kwargs...)
-end
-
-for f in (:get, :put, :post, :head, :patch)
-    str = uppercase(string(f))
-    @eval function HTTP.$(f)(s::Server, url::AbstractString, args...; kwargs...)
-        return HTTP.request("$($str)", s, url, args...; kwargs...)
-    end
-end
-
 function Base.rm(s::Server)
     return ispath(joinpath(SERVER_DIR, s.name * ".json")) &&
            rm(joinpath(SERVER_DIR, s.name * ".json"))

@@ -63,7 +63,7 @@ end
 StructTypes.StructType(::Calculation) = StructTypes.Mutable()
 
 @kwdef struct Environment <: Storable
-    name::String
+    name::String = ""
     directives::Dict = Dict()
     exports::Dict = Dict()
     preamble::String = ""
