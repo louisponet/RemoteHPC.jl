@@ -20,12 +20,7 @@ jobs:
           - ubuntu-latest
         arch:
           - x64
-    services:
-      slurm:
-        image: xenonmiddleware/slurm:17
-        ports:
-          - 5001:22
-
+          - x86
     steps:
       - uses: actions/checkout@v1
       - uses: julia-actions/setup-julia@latest
