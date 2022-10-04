@@ -23,7 +23,7 @@ jobs:
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@master
         with:
-          swap-size-gb: 50
+          swap-size-gb: 10
       - uses: actions/checkout@v2.2.0
       - uses: julia-actions/setup-julia@latest
         with:
@@ -33,7 +33,7 @@ jobs:
       - name: Start Slurm Docker image
         run: |
           docker pull giovtorres/docker-centos7-slurm:$SLURM
-          docker run -d -it -h ernie -v $(pwd):/SlurmTools -v $(julia -e 'print(dirname(Sys.BINDIR))'):/julia --name slurm-$SLURM giovtorres/docker-centos7-slurm:$SLURM
+          docker run -m 6g -d -it -h ernie -v $(pwd):/SlurmTools -v $(julia -e 'print(dirname(Sys.BINDIR))'):/julia --name slurm-$SLURM giovtorres/docker-centos7-slurm:$SLURM
       - name: Instantiate package
         run: docker exec slurm-$SLURM /julia/bin/julia --project=/SlurmTools -e 'using Pkg; Pkg.instantiate(verbose=true); Pkg.build(verbose=true)'
       - name: Run Tests
