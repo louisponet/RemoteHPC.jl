@@ -26,7 +26,7 @@ while !isalive(local_server())
     sleep(0.1)
 end
 
-t_jobdir = tempname()
+t_jobdir = joinpath(homedir(),tempname())
 
 @testset "database" begin
     exec = RemoteHPC.Exec("test", "cat", "", Dict("f" => 3, "test" => [1, 2, 3], "test2" => "stringtest", "-nk" => 10), ["intel", "intel-mkl"], true, true)
