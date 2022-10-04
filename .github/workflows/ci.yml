@@ -15,9 +15,7 @@ jobs:
     strategy:
       matrix:
         version:
-          - '1.4'
-          - '1.7'
-          - 'nightly'
+          - '1.8'
         os: [ubuntu-latest]
         arch: [x64]
 
