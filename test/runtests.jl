@@ -42,7 +42,15 @@ t_jobdir = tempname()
     end
    
     e = Environment("test", Dict("N" => 1, "time" => "00:01:01"), Dict("OMP_NUM_THREADS" => 1), "", "", RemoteHPC.Exec(name = "srun", exec="srun"))
-   
+    partition = get(ENV, "SLURM_PARTITION", nothing)
+    account = get(ENV, "SLURM_ACCOUNT", nothing)
+    if partition !== nothing
+        e.directives["partition"] = partition
+    end
+    if account !== nothing
+        e.directives["account"] = account
+    end            
+
     save(local_server(), e)
     te = load(local_server(), e)
     for f in fieldnames(Environment)
@@ -79,6 +87,8 @@ end
         sleep_e = Exec(name="sleep", exec="sleep", input_on_stdin = false, parallel=false)
         c = [Calculation(exec, "scf.in", "scf.out", true), Calculation(exec, "nscf.in", "nscf.out", true), Calculation(sleep_e, "10", "", true)]
         e = load(local_server(), Environment("test"))
+
+           
         submit(local_server(), t_jobdir, "testjob", e, c)
         while state(local_server(), t_jobdir) != RemoteHPC.Running
             sleep(0.1)
