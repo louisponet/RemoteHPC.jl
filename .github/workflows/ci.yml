@@ -22,6 +22,10 @@ jobs:
         arch: [x64]
 
     steps:
+	  - name: Set Swap Space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 10
       - uses: actions/checkout@v2.2.0
       - uses: julia-actions/setup-julia@latest
         with:
