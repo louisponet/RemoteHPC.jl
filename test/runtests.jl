@@ -1,7 +1,8 @@
 using Test
 using RemoteHPC
 tconfdir = tempname()
-RemoteHPC.config_path(p...) = joinpath(tconfdir, p...)
+import RemoteHPC: config_path
+config_path(p...) = joinpath(tconfdir, p...)
 
 paths = ["jobs",
          "logs/jobs",
@@ -10,7 +11,7 @@ paths = ["jobs",
          "storage/execs",
          "storage/environments"]
 for p in paths             
-    mkpath(RemoteHPC.config_path(p))
+    mkpath(config_path(p))
 end
 
 redirect_stdin(devnull) do
@@ -26,19 +27,20 @@ while !isalive(local_server())
     sleep(0.1)
 end
 
+const s = local_server()
 t_jobdir = joinpath(homedir(),tempname()[2:end])
 
 @testset "database" begin
     exec = RemoteHPC.Exec("test", "cat", "", Dict("f" => 3, "test" => [1, 2, 3], "test2" => "stringtest", "-nk" => 10), ["intel", "intel-mkl"], true, true)
-    save(local_server(), exec)
-    te = load(local_server(), exec)
+    save(s, exec)
+    te = load(s, exec)
     for f in fieldnames(Exec)
         @test getfield(te, f) == getfield(exec, f)
     end
     
     exec = RemoteHPC.Exec("test", "cat", "", Dict(), [], true, false)
     redirect_stderr(devnull) do
-        save(local_server(), exec)
+        save(s, exec)
     end
    
     e = Environment("test", Dict("N" => 1, "time" => "00:01:01"), Dict("OMP_NUM_THREADS" => 1), "", "", RemoteHPC.Exec(name = "srun", exec="srun"))
@@ -51,21 +53,28 @@ t_jobdir = joinpath(homedir(),tempname()[2:end])
         e.directives["account"] = account
     end            
 
-    save(local_server(), e)
-    te = load(local_server(), e)
+    save(s, e)
+    te = load(s, e)
     for f in fieldnames(Environment)
         @test getfield(te, f) == getfield(e, f)
     end
+
+
+    es = load(s, Exec("ca"))
+    @test length(es) == 1
+    es = load(s, Exec(dir=""))
+    @test length(es) == 1
+   
 end
 @testset "job" begin
     @testset "creation and save" begin
-        exec = load(local_server(), Exec("test"))
+        exec = load(s, Exec("test"))
         c = [Calculation(exec, "scf.in", "scf.out", true), Calculation(exec, "nscf.in", "nscf.out", true)]
-        e = load(local_server(), Environment("test"))
-        save(local_server(), t_jobdir, "testjob", e, c)
-        @test state(local_server(), t_jobdir) == RemoteHPC.Saved
+        e = load(s, Environment("test"))
+        save(s, t_jobdir, "testjob", e, c)
+        @test state(s, t_jobdir) == RemoteHPC.Saved
 
-        td = load(local_server(), t_jobdir)
+        td = load(s, t_jobdir)
         @test td.name == "testjob"
         for (c1, c2) in zip(c, td.calculations)
             for f in fieldnames(Calculation)
@@ -75,26 +84,42 @@ end
         @test td.environment == e
     end
     @testset "submission and running" begin
-        write(local_server(), joinpath(t_jobdir, "scf.in"), "test input")
-        write(local_server(), joinpath(t_jobdir, "nscf.in"), "test input2")
-        submit(local_server(), t_jobdir)
-        while state(local_server(), t_jobdir) != RemoteHPC.Completed
+        write(s, joinpath(t_jobdir, "scf.in"), "test input")
+        write(s, joinpath(t_jobdir, "nscf.in"), "test input2")
+        submit(s, t_jobdir)
+        while state(s, t_jobdir) != RemoteHPC.Completed
             sleep(0.1)
         end
         @test read(joinpath(t_jobdir, "scf.out"), String) == "test input"
         @test read(joinpath(t_jobdir, "nscf.out"), String) == "test input2"
-        exec = load(local_server(), Exec("test"))
+        exec = load(s, Exec("test"))
         sleep_e = Exec(name="sleep", exec="sleep", input_on_stdin = false, parallel=false)
         c = [Calculation(exec, "scf.in", "scf.out", true), Calculation(exec, "nscf.in", "nscf.out", true), Calculation(sleep_e, "10", "", true)]
-        e = load(local_server(), Environment("test"))
+        e = load(s, Environment("test"))
 
            
-        submit(local_server(), t_jobdir, "testjob", e, c)
-        while state(local_server(), t_jobdir) != RemoteHPC.Running
+        submit(s, t_jobdir, "testjob", e, c)
+        while state(s, t_jobdir) != RemoteHPC.Running
             sleep(0.1)
         end
-        abort(local_server(), t_jobdir)
-        @test state(local_server(), t_jobdir) == RemoteHPC.Cancelled
-    end
+        abort(s, t_jobdir)
+        @test state(s, t_jobdir) == RemoteHPC.Cancelled
+        rm(s, t_jobdir)
+        @test !ispath(s, t_jobdir)
         
+    end
+end
+@testset "files api" begin
+    @test length(readdir(s, config_path())) == 3
+    @test filesize(s,  config_path("logs/daemon/restapi.log")) > 0
+    @test mtime(s, config_path("logs/daemon/restapi.log")) > 0
+    tname = tempname()
+    write(s, tname, "test")
+    tname2 = tempname()
+    symlink(s, tname, tname2)
+    @test read(s, tname2, String) == "test"
+    rm(s, tname2)
+    rm(s, tname)
+    @test !ispath(s, tname)
+    @test !ispath(s, tname2)
 end

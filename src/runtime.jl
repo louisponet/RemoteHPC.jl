@@ -261,7 +261,6 @@ function julia_main()::Cint
     submit_channel = Channel{String}(Inf)
     job_queue = Queue()
     setup_core_api!(router)
-    setup_environment_api!(router)
     setup_job_api!(router, submit_channel, job_queue, s.scheduler)
     setup_database_api!(router)
     

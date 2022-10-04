@@ -48,28 +48,6 @@ function setup_core_api!(router::HTTP.Router)
     HTTP.register!(router, "POST", "/symlink/", api_symlink)
 end
 
-verify_exec(req) = verify_exec(JSON3.read(req.body, Exec))
-known_execs(req) = (d = JSON3.read(req.body); known_execs(d["exec"],d["dir"]))
-get_exec(req)    = load(Exec(splitpath(req.target)[end]))
-save_exec(req)   = save(JSON3.read(req.body, Exec))
-
-function setup_exec_api!(router::HTTP.Router)
-    HTTP.register!(router, "GET", "/verify_exec", verify_exec)
-    HTTP.register!(router, "GET", "/known_execs/", known_execs)
-    HTTP.register!(router, "GET", "/execs/**", get_exec)
-    HTTP.register!(router, "POST", "/execs/", save_exec)
-end
-
-add_environment(req) = save(JSON3.read(req.body, Environment))
-get_environment(req) = load(Environment(splitpath(req.target)[end]))
-rm_environment!(req) = rm(Environment(splitpath(req.target)[end]))
-
-function setup_environment_api!(router::HTTP.Router)
-    HTTP.register!(router, "GET", "/environment/**", get_environment)
-    HTTP.register!(router, "PUT", "/environment/**", rm_environment!)
-    HTTP.register!(router, "POST", "/environment/", add_environment)
-end 
-
 submit_job(req, channel) = put!(channel, path(req))
 
 function get_job(job_dir::AbstractString, queue::Queue)
