@@ -29,27 +29,17 @@ include("io.jl")
 
 @precompile_all_calls begin
     s = local_server()
-    # redirect_stderr(devnull) do
-        if !isalive(s)
-            @async julia_main()
-        end
-    # end
     t = "asdfe"
     t2 = "edfasdf"
-    e = Exec(name = "$t2", exec="srun")
-    e1 = Environment("$t", Dict("-N" => 3, "partition" => "default", "time" => "00:01:01"), Dict("OMP_NUM_THREADS" => 1), "", "", e)
-    save(s, e1)
-    save(s, e)
-    e1 = load(s, e1)
-    e = load(s, e)
+    e = Exec(name = t2, exec="srun")
+    e1 = Environment(t, Dict("-N" => 3, "partition" => "default", "time" => "00:01:01"), Dict("OMP_NUM_THREADS" => 1), "", "", e)
+    save(e1)
+    save(e)
+    e1 = load(e1)
+    e = load(e)
     calcs = [Calculation(e, "scf.in", "scf.out", true)]
-    tdir = tempname()
-    save(s, tdir, "test", e1, calcs)
-    state(s, tdir)
-    load(s, tdir)
-    rm(s, tdir)
-    rm(s, e1)
-    rm(s, e)
+    rm(e1)
+    rm(e)
 end
 
 export Server, start, restart, local_server, isalive, load, save, submit, abort, state
