@@ -1,4 +1,4 @@
-
+using REPL.TerminalMenus
 const SERVER_DIR = config_path("storage/servers")
 
 """
@@ -74,7 +74,6 @@ function configure_scheduler(s::Server; interactive=true)
     end
 end
     
-
 function configure!(s::Server; interactive=true)
     if interactive
         s.port  = ask_input(Int, "Port", s.port)
@@ -84,9 +83,8 @@ function configure!(s::Server; interactive=true)
     else
         if interactive
             julia = ask_input(String, "Julia Exec", s.julia_exec)
-            while server_command(s.username, s.domain, "which $julia").exitcode != 0
-                @warn "$julia, no such file or directory."
-                julia = ask_input(String, "Julia Exec")
+            if server_command(s.username, s.domain, "which $julia").exitcode != 0
+                @warn "$julia, no such file or directory. Remember to install julia on the server either manually or using `RemoteHPC.install_RemoteHPC(s)`."
             end
         else
             julia = "julia"
@@ -100,7 +98,7 @@ function configure!(s::Server; interactive=true)
         return
     end
     s.scheduler = scheduler     
-    hdir = server_command(s, "pwd").stdout
+    hdir = server_command(s, "pwd").stdout[1:end-1]
     if interactive
         dir = ask_input(String, "Default Jobs directory", hdir)
         if dir != hdir
@@ -171,7 +169,7 @@ function Server(s::String)
     @info "Creating new Server configuration..."
     if occursin("@", s)
         username, domain = split(s, "@")
-        name = ask_input(String, "Please specify the Server's identifying name:")
+        name = ask_input(String, "Please specify the Server's identifying name")
         if exists(Server(name=name, username=username, domain=domain))
             @warn "A server with $name was already configured and will be overwritten."
         end
@@ -211,6 +209,48 @@ end
 StructTypes.StructType(::Type{Server}) = StructTypes.Mutable()
 islocal(s::Server) = s.domain == "localhost"
 local_server() = Server(gethostname())
+
+function install_RemoteHPC(s::Server, julia_exec = nothing)
+    # We install the latest version of julia in the homedir
+    if julia_exec === nothing
+        res = server_command(s, "which julia")
+        if res.exitcode != 0
+            @info "No julia found in PATH, installing it..."
+            t = tempname()
+            mkdir(t)
+            download("https://julialang-s3.julialang.org/bin/linux/x64/1.8/julia-1.8.2-linux-x86_64.tar.gz", joinpath(t, "julia.tar.gz"))
+            push(joinpath(t, "julia.tar.gz"), s, "julia-1.8.2-linux-x86_64.tar.gz")
+            rm(t, recursive=true)
+            res = server_command(s, "tar -xf julia-1.8.2-linux-x86_64.tar.gz")
+            @assert res.exitcode == 0 "Issue unpacking julia executable on cluster, please install julia manually"
+            julia_exec = "~/julia-1.8.2/bin/julia"
+        else
+            julia_exec = res.stdout
+        end
+    end
+    @info "julia installed in ~/julia-1.8.2/bin"
+    @info "Installing RemoteHPC"
+    res = server_command(s, "$julia_exec -e 'using Pkg; Pkg.add(\"RemoteHPC\")'")
+    @assert res.exitcode == 0 "Something went wrong installing RemoteHPC on server, please install manually"
+
+    @info "RemoteHPC installed on remote cluster, try starting the server with `start(server)`."
+    s.julia_exec = julia_exec
+end
+
+function update_RemoteHPC(s::Server)
+    alive =  isalive(s)
+    if alive
+        @info "Server running, killing it first."
+        kill(s)
+    end
+    @info "Updating RemoteHPC"
+    res = server_command(s, "$(s.julia_exec) -e 'using Pkg; Pkg.update(\"RemoteHPC\")'")
+    @assert res.exitcode == 0 "Something went wrong updating RemoteHPC."
+    if alive
+        @info "Restarting server."
+        start(s)
+    end
+end
 
 Base.joinpath(s::Server, p...) = joinpath(s.root_jobdir, p...)
 Base.ispath(s::Server, p...) = islocal(s) ? ispath(p...) :
@@ -267,11 +307,16 @@ function load_config(username, domain)
         end
     end
 end
-Base.gethostname(username::String, domain::String) = split(server_command(username, domain, "hostname").stdout)[1]
-Base.gethostname(s::Server) = gethostname(s.username, s.domain)
-load_config(s::Server) = 
-     load_config(s.username, s.domain)
+function load_config(s::Server)
+    if isalive(s)
+        return JSON3.read(HTTP.get(s, "/server/config").body, Server)
+    else 
+        return load_config(s.username, s.domain)
+    end
+end
 
+Base.gethostname(username::AbstractString, domain::AbstractString) = split(server_command(username, domain, "hostname").stdout)[1]
+Base.gethostname(s::Server) = gethostname(s.username, s.domain)
 ssh_string(s::Server) = s.username * "@" * s.domain
 http_string(s::Server) = s.local_port != 0 ? "http://localhost:$(s.local_port)" : "http://$(s.domain):$(s.port)"
 
@@ -423,3 +468,6 @@ function Base.filesize(s::Server, p)
         return JSON3.read(resp.body, Float64)
     end
 end
+
+
+

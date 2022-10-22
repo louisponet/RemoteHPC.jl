@@ -48,7 +48,7 @@ directive_prefix(::Bash) = "#"
 directive_prefix(::HQ) = "#HQ"
 
 name_directive(::Slurm) = "#SBATCH --job-name"
-name_directive(::Bash) = "job-name"
+name_directive(::Bash) = "# job-name"
 name_directive(::HQ) = "#HQ --name"
 
 function parse_params(sched::Scheduler, preamble::String)

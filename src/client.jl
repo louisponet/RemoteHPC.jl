@@ -27,7 +27,18 @@ end
 Launches the daemon process on  the host [`Server`](@ref) `s`.
 """
 function start(s::Server)
-    @assert !isalive(s) "Server is already up and running."
+    alive = isalive(s)
+    @assert !alive "Server is already up and running."
+    if s.local_port != 0
+        try
+            destroy_tunnel(s)
+        finally
+            construct_tunnel(s)
+        end
+        alive = isalive(s)
+    end
+    @assert !alive "Server is already up and running."
+     
     @info "Starting:\n$s"
     hostname = gethostname(s)
     if islocal(s)
@@ -60,16 +71,12 @@ function start(s::Server)
     # whether the server started succesfully.
     function checktime()
         curtime = 0
-        # try
-            if islocal(s)
-                return mtime(config_path("storage", "servers", "$(hostname).json"))
-            else
-                cmd = "stat -c %Z  ~/.julia/config/RemoteHPC/$hostname/storage/servers/$(hostname).json"
-                return parse(Int, server_command(s.username, s.domain, cmd)[1])
-            end
-        # catch
-        #     nothing
-        # end
+        if islocal(s)
+            return mtime(config_path("storage", "servers", "$(hostname).json"))
+        else
+            cmd = "stat -c %Z  ~/.julia/config/RemoteHPC/$hostname/storage/servers/$(hostname).json"
+            return parse(Int, server_command(s.username, s.domain, cmd)[1])
+        end
         return curtime
     end
     firstime = checktime()
@@ -109,6 +116,9 @@ function start(s::Server)
         @info "Saving updated server info..."
         save(s)
     end
+    while !isalive(s)
+        sleep(0.1)
+    end
     return s
 end
 
@@ -117,14 +127,29 @@ end
 
 Kills the daemon process on [`Server`](@ref) `s`.
 """
-Base.kill(s::Server) = HTTP.put(s, "/kill_server")
-
-function restart(s::Server)
-    kill(s)
+function Base.kill(s::Server)
+    HTTP.put(s, "/server/kill")
+    if s.local_port != 0
+        destroy_tunnel(s)
+    end
     while isalive(s)
         sleep(0.1)
     end
+end
+
+function restart(s::Server)
+    kill(s)
     return start(s)
+end
+
+function update_config(s::Server)
+    alive = isalive(s)
+    if alive 
+        @info "Server is alive, killing"
+        kill(s)
+    end
+    save(s)
+    start(s)
 end
 
 """
@@ -134,11 +159,25 @@ Will try to fetch some data from `s`. If the server is not running this will fai
 the return is `false`.
 """
 function isalive(s::Server)
-    try
-        return HTTP.get(s, "/isalive", connect_timeout=2, retries=2) !== nothing
+    alive = try
+        HTTP.get(s, "/isalive", connect_timeout=2, retries=2) !== nothing
     catch
-        return false
+        false
     end
+    alive && return true
+    if s.local_port != 0
+        try
+            destroy_tunnel(s)
+        finally
+            construct_tunnel(s)
+            try
+                return HTTP.get(s, "/isalive", connect_timeout=2, retries=2) !== nothing
+            catch
+                return false
+            end
+        end
+    end
+    return false
 end
 
 function save(s::Server, dir::AbstractString, n::AbstractString, e::Environment, calcs::Vector{Calculation})

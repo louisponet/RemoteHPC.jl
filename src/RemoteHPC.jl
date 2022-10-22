@@ -17,6 +17,12 @@ const CONFIG_DIR = occursin("cache", first(Base.DEPOT_PATH)) ?
 
 config_path(path...) = joinpath(CONFIG_DIR, gethostname(), path...)
 
+function getfirst(f, itr)
+    id = findfirst(f, itr)
+    id === nothing && return nothing
+    return itr[id]
+end
+
 include("database.jl")
 
 include("types.jl")
@@ -43,7 +49,7 @@ include("io.jl")
 end
 
 export Server, start, restart, local_server, isalive, load, save, submit, abort, state
-export Calculation, Environment, Exec
+export Calculation, Environment, Exec, HQ, Slurm, Bash
 
 # if Base.VERSION >= v"1.4.2"
 #     include("precompile.jl")

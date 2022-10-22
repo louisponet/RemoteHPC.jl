@@ -46,7 +46,7 @@ function Base.fill!(qu::Queue, s::Scheduler, init)
         for q_ in (q.full_queue, q.current_queue)
             for (dir, info) in q_
                 if !ispath(joinpath(dir, "job.sh"))
-                    delete!(qu, dir)
+                    delete!(q_, dir)
                 end
             end
         end
@@ -87,13 +87,13 @@ function Base.fill!(qu::Queue, s::Scheduler, init)
     return qu
 end
 
-function main_loop(s::Server, submit_channel, queue)
+function main_loop(s::Server, submit_channel, queue, main_loop_stop)
     fill!(queue, s.scheduler, true)
     @info (timestamp=string(Dates.now()), username = get(ENV,"USER","nouser"), host = gethostname(), pid=getpid())
 
     # Used to identify if multiple servers are running in order to selfdestruct 
     log_mtimes = mtime.(joinpath.((config_path("logs/runtimes/"),), readdir(config_path("logs/runtimes/"))))
-    t = Threads.@spawn while true
+    t = Threads.@spawn while !main_loop_stop[]
         try
             fill!(queue, s.scheduler, false)
             JSON3.write(config_path("jobs", "queue.json"), queue.info)
@@ -102,7 +102,7 @@ function main_loop(s::Server, submit_channel, queue)
         end
         sleep(5)
     end
-    Threads.@spawn while true
+    Threads.@spawn while !main_loop_stop[]
         try
             handle_job_submission!(queue, s, submit_channel)
         catch e
@@ -110,7 +110,7 @@ function main_loop(s::Server, submit_channel, queue)
         end
         sleep(5)
     end
-    Threads.@spawn while true
+    Threads.@spawn while !main_loop_stop[]
         monitor_issues(log_mtimes)
 
         try  
@@ -125,6 +125,7 @@ function main_loop(s::Server, submit_channel, queue)
         sleep(5)
     end
     fetch(t)
+    JSON3.write(config_path("jobs", "queue.json"), queue.info)
 end
 
 function print_log(queue)
@@ -252,7 +253,7 @@ end
 
 function julia_main()::Cint
     # initialize_config_dir()
-    s = Server(gethostname())
+    s = local_server()
     port, server = listenany(ip"0.0.0.0", 8080)
     s.port = port
     user_uuid = UUID(s.uuid)
@@ -264,24 +265,25 @@ function julia_main()::Cint
     setup_job_api!(router, submit_channel, job_queue, s.scheduler)
     setup_database_api!(router)
     
-    should_stop = false 
-    HTTP.register!(router, "PUT", "/kill_server", (req) -> should_stop=true)
+        
+    should_stop = Ref(false)
+    HTTP.register!(router, "GET", "/server/config", (req) -> s)    
 
-    @tspawnat min(Threads.nthreads(), 2) with_logger(server_logger()) do
+    t = @tspawnat min(Threads.nthreads(), 2) with_logger(server_logger()) do
         try
-            main_loop(s, submit_channel, job_queue)
+            main_loop(s, submit_channel, job_queue, should_stop)
         catch e
             @error e, stacktrace(catch_backtrace())
             rethrow(e)
         end
     end
+    HTTP.register!(router, "PUT", "/server/kill", (req) -> (should_stop[]=true; fetch(t); true))
     save(s)
-   
     with_logger(restapi_logger()) do
         @info (timestamp = string(Dates.now()), username = ENV["USER"], host = gethostname(), pid=getpid(), port=port)
         
-        t = @async HTTP.serve(router |> requestHandler |> x -> AuthHandler(x, user_uuid), "0.0.0.0", port, server=server)
-        while !should_stop
+        @async HTTP.serve(router |> requestHandler |> x -> AuthHandler(x, user_uuid), "0.0.0.0", port, server=server)
+        while !should_stop[]
             sleep(1)
         end
     end
