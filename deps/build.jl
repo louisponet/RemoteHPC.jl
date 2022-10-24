@@ -50,7 +50,7 @@ function configure_local()
         JSON3.write(spath,
                     (name = host, username = user, domain = "localhost",
                      julia_exec = joinpath(Sys.BINDIR, "julia"), scheduler = scheduler,
-                     port = 8080, local_port = 0, root_jobdir = homedir(),
+                     jobdir = homedir(),
                      max_concurrent_jobs = 100, uuid = string(uuid4())))
     end
 end

@@ -1,13 +1,14 @@
 name = "RemoteHPC"
 uuid = "c4f2a1c4-7655-40d8-82ee-c6ae0a8b7409"
 authors = ["louisponet <louisponet@gmail.com>"]
-version = "0.1.1"
+version = "0.1.2"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
 LoggingExtras = "e6f89c97-d47a-5376-807f-9c37f3926c36"
+OpenSSH_jll = "9bd350c2-7e96-507f-8002-3f2e150b4e1b"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 REPL = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 SnoopPrecompile = "66db9d55-30c0-4569-8b51-7e840670fc0c"
@@ -20,6 +21,7 @@ UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 HTTP = "^1"
 JSON3 = "^1"
 LoggingExtras = "^0.4"
+OpenSSH_jll = "8.1"
 ProgressMeter = "^1"
 SnoopPrecompile = "^1"
 StructTypes = "^1"

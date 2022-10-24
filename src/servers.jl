@@ -1,16 +1,16 @@
 using REPL.TerminalMenus
+using OpenSSH_jll
 const SERVER_DIR = config_path("storage/servers")
 
 """
-    Server(name::String, username::String, domain::String, port::Int, scheduler::Scheduler, mountpoint::String,
-           julia_exec::String, root_jobdir::String, local_port::Int, max_concurrent_jobs::Int)
+    Server(name::String, username::String, domain::String, scheduler::Scheduler, mountpoint::String,
+           julia_exec::String, jobdir::String, max_concurrent_jobs::Int)
     Server(name::String)
 
 A [`Server`](@ref) represents a remote daemon that has the label `name`. It runs on the server defined by
 `username` and `domain`. The requirement is that `ssh` is set up in such a way that `ssh username@domain` is
 possible, i.e. ssh-copy-id must have been used to not require passwords while executing `ssh` commands.
 
-The daemon will listen to the `port` for http requests and if `local_port` is specified,
 a tunnel will be created to guarantee a connection. This is useful in the case that the login node on the remote
 server can change.
 
@@ -20,11 +20,10 @@ Calling [`Server`](@ref) with a single `String` will either load the configurati
     name::String = ""
     username::String = ""
     domain::String = ""
-    port::Int = 8080
     scheduler::Scheduler = Bash()
     julia_exec::String = "julia"
-    root_jobdir::String = ""
-    local_port::Int = 0
+    jobdir::String = ""
+    port::Int = 8080
     max_concurrent_jobs::Int = 100
     uuid::String = ""
 end
@@ -33,15 +32,15 @@ storage_directory(::Server) = "servers"
 
 function configure_scheduler(s::Server; interactive = true)
     scheduler = nothing
-    if haskey(ENV, "DFC_SCHEDULER")
-        sched = ENV["DFC_SCHEDULER"]
+    if haskey(ENV, "REMOTEHPC_SCHEDULER")
+        sched = ENV["REMOTEHPC_SCHEDULER"]
         if occursin("hq", lowercase(sched))
-            cmd = get(ENV, "DFC_SCHEDULER_CMD", "hq")
+            cmd = get(ENV, "REMOTEHPC_SCHEDULER_CMD", "hq")
             return HQ(; server_command = cmd)
         elseif lowercase(sched) == "slurm"
             return Slurm()
         else
-            error("Scheduler $sched not recognized please set a different DFC_SCHEDULER environment var.")
+            error("Scheduler $sched not recognized please set a different REMOTEHPC_SCHEDULER environment var.")
         end
     end
 
@@ -75,9 +74,6 @@ function configure_scheduler(s::Server; interactive = true)
 end
 
 function configure!(s::Server; interactive = true)
-    if interactive
-        s.port = ask_input(Int, "Port", s.port)
-    end
     if s.domain == "localhost"
         julia = joinpath(Sys.BINDIR, "julia")
     else
@@ -86,6 +82,7 @@ function configure!(s::Server; interactive = true)
             if server_command(s.username, s.domain, "which $julia").exitcode != 0
                 @warn "$julia, no such file or directory. Remember to install julia on the server either manually or using `RemoteHPC.install_RemoteHPC(s)`."
             end
+            julia = julia
         else
             julia = "julia"
         end
@@ -117,24 +114,14 @@ function configure!(s::Server; interactive = true)
             end
         end
 
-        s.root_jobdir = dir
+        s.jobdir = dir
         s.max_concurrent_jobs = ask_input(Int, "Max Concurrent Jobs", s.max_concurrent_jobs)
     else
-        s.root_jobdir = hdir
+        s.jobdir = hdir
     end
 
     s.uuid = string(uuid4())
     return s
-end
-
-function configure_local_port!(s::Server)
-    local_choice = request("Should a local tunnel be created?", RadioMenu(["yes", "no"]))
-    local_choice == -1 && return
-    if local_choice == 1
-        s.local_port = ask_input(Int, "Local port", s.local_port)
-    else
-        s.local_port = 0
-    end
 end
 
 """
@@ -196,13 +183,11 @@ function Server(s::String)
         if change_config == 2
             configure!(server)
         end
-        configure_local_port!(server)
 
     else
         @info "Couldn't pull server configuration, creating new..."
         server = Server(; name = name, domain = domain, username = username)
         configure!(server)
-        configure_local_port!(server)
     end
     save(server)
     return server
@@ -227,17 +212,18 @@ function install_RemoteHPC(s::Server, julia_exec = nothing)
             res = server_command(s, "tar -xf julia-1.8.2-linux-x86_64.tar.gz")
             @assert res.exitcode == 0 "Issue unpacking julia executable on cluster, please install julia manually"
             julia_exec = "~/julia-1.8.2/bin/julia"
+            @info "julia installed in ~/julia-1.8.2/bin"
         else
-            julia_exec = res.stdout
+            julia_exec = res.stdout[1:end-1]
         end
     end
-    @info "julia installed in ~/julia-1.8.2/bin"
     @info "Installing RemoteHPC"
-    res = server_command(s, "$julia_exec -e 'using Pkg; Pkg.add(\"RemoteHPC\")'")
+    res = server_command(s, "$julia_exec --project=~/.julia/config/RemoteHPC/ -e 'using Pkg; Pkg.add(\"RemoteHPC\");Pkg.build(\"RemoteHPC\")'")
     @assert res.exitcode == 0 "Something went wrong installing RemoteHPC on server, please install manually"
 
+    s.julia_exec = julia_exec
     @info "RemoteHPC installed on remote cluster, try starting the server with `start(server)`."
-    return s.julia_exec = julia_exec
+    return
 end
 
 function update_RemoteHPC(s::Server)
@@ -247,7 +233,7 @@ function update_RemoteHPC(s::Server)
         kill(s)
     end
     @info "Updating RemoteHPC"
-    res = server_command(s, "$(s.julia_exec) -e 'using Pkg; Pkg.update(\"RemoteHPC\")'")
+    res = server_command(s, "$(s.julia_exec) --project=~/.julia/config/RemoteHPC/ -e 'using Pkg; Pkg.update(\"RemoteHPC\")'")
     @assert res.exitcode == 0 "Something went wrong updating RemoteHPC."
     if alive
         @info "Restarting server."
@@ -255,7 +241,7 @@ function update_RemoteHPC(s::Server)
     end
 end
 
-Base.joinpath(s::Server, p...) = joinpath(s.root_jobdir, p...)
+Base.joinpath(s::Server, p...) = joinpath(s.jobdir, p...)
 function Base.ispath(s::Server, p...)
     return islocal(s) ? ispath(p...) :
            JSON3.read(HTTP.get(s, "/ispath/" * joinpath(p...)).body, Bool)
@@ -328,8 +314,7 @@ end
 Base.gethostname(s::Server) = gethostname(s.username, s.domain)
 ssh_string(s::Server) = s.username * "@" * s.domain
 function http_string(s::Server)
-    return s.local_port != 0 ? "http://localhost:$(s.local_port)" :
-           "http://$(s.domain):$(s.port)"
+    return "http://localhost:$(s.port)"
 end
 
 function Base.rm(s::Server)
@@ -338,8 +323,8 @@ function Base.rm(s::Server)
 end
 
 function find_tunnel(s)
-    return getfirst(x -> occursin("ssh -N -f -L $(s.local_port)", x),
-                    split(read(pipeline(`ps aux`; stdout = `grep $(s.local_port)`), String),
+    return getfirst(x -> occursin("-N -f -L", x),
+                    split(read(pipeline(`ps aux`; stdout = `grep $(s.port)`), String),
                           "\n"))
 end
 
@@ -354,9 +339,14 @@ function destroy_tunnel(s)
     end
 end
 
-function construct_tunnel(s)
-    return run(Cmd(`ssh -N -f -L $(s.local_port):localhost:$(s.port) $(ssh_string(s))`;
-                   detach = true))
+function construct_tunnel(s, remote_port)
+    OpenSSH_jll.ssh() do ssh_exec
+        port, serv = listenany(Sockets.localhost, 0)
+        close(serv)
+        run(Cmd(`$ssh_exec -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -N -f -L $port:localhost:$remote_port $(ssh_string(s))`;
+            detach = true))
+        return port
+    end
 end
 
 function ask_input(::Type{T}, message, default = nothing) where {T}
@@ -392,8 +382,10 @@ function pull(server::Server, remote::String, loc::String)
     else
         out = Pipe()
         err = Pipe()
-        run(pipeline(`scp -r $(ssh_string(server) * ":" * remote) $path`; stdout = out,
-                     stderr = err))
+        OpenSSH_jll.scp() do scp_exec
+            run(pipeline(`$scp_exec -r $(ssh_string(server) * ":" * remote) $path`; stdout = out,
+                         stderr = err))
+        end
         close(out.in)
         close(err.in)
         stderr = read(err, String)
@@ -415,8 +407,10 @@ function push(filename::String, server::Server, server_file::String)
     else
         out = Pipe()
         err = Pipe()
-        run(pipeline(`scp $filename $(ssh_string(server) * ":" * server_file)`;
+        # OpenSSH_jll.scp() do scp_exec
+            run(pipeline(`scp $filename $(ssh_string(server) * ":" * server_file)`;
                      stdout = out, stderr = err))
+        # end
         close(out.in)
         close(err.in)
     end
@@ -430,9 +424,11 @@ function server_command(username, domain, cmd::String)
         process = run(pipeline(ignorestatus(Cmd(string.(split(cmd)))); stdout = out,
                                stderr = err))
     else
-        process = run(pipeline(ignorestatus(Cmd(["ssh", "$(username * "@" * domain)",
-                                                 string.(split(cmd))...])); stdout = out,
-                               stderr = err))
+        OpenSSH_jll.ssh() do ssh_exec
+            process = run(pipeline(ignorestatus(Cmd(["$ssh_exec", "$(username * "@" * domain)",
+                                                     string.(split(cmd))...])); stdout = out,
+                                   stderr = err))
+        end
     end
     close(out.in)
     close(err.in)

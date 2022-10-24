@@ -1,9 +1,6 @@
 
 function path(req::HTTP.Request)
     p = req.target
-    if !isabspath(p)
-        p = joinpath(CURRENT_SERVER[].root_jobdir, p)
-    end
     id = findnext(isequal('/'), p, 2)
     if length(p) < id + 1
         return ""
