@@ -21,7 +21,6 @@ Will first transform `flags` into a `Vector{ExecFlag}`, and construct the [`Exec
     dir::String = ""
     flags::Dict = Dict()
     modules::Vector{String} = String[]
-    input_on_stdin::Bool = true
     parallel::Bool = true
 end
 Exec(str::String;kwargs...) = Exec(name=str; kwargs...)
@@ -56,8 +55,7 @@ end
 
 @kwdef struct Calculation
     exec::Exec
-    infile::String = ""
-    outfile::String = ""
+    args::String = ""
     run::Bool = true
 end
 StructTypes.StructType(::Calculation) = StructTypes.Mutable()

@@ -55,13 +55,13 @@ for sched in scheds
             @test st.scheduler == sched
         end
         @testset "database" begin
-            exec = RemoteHPC.Exec("test", "cat", "", Dict("f" => 3, "test" => [1, 2, 3], "test2" => "stringtest", "-nk" => 10), ["intel", "intel-mkl"], true, true)
+            exec = RemoteHPC.Exec("test", "cat", "", Dict("f" => 3, "test" => [1, 2, 3], "test2" => "stringtest", "-nk" => 10), ["intel", "intel-mkl"], true)
             save(s, exec)
             te = load(s, exec)
             for f in fieldnames(Exec)
                 @test getfield(te, f) == getfield(exec, f)
             end
-            exec = RemoteHPC.Exec("test", "cat", "", Dict(), [], true, false)
+            exec = RemoteHPC.Exec("test", "cat", "", Dict(), [], false)
             redirect_stderr(devnull) do
                 save(s, exec)
             end
@@ -91,9 +91,9 @@ for sched in scheds
         @testset "job" begin
             @testset "creation and save" begin
                 exec = load(s, Exec("test"))
-                c = [Calculation(exec, "scf.in", "scf.out", true), Calculation(exec, "nscf.in", "nscf.out", true)]
+                c = [Calculation(exec, "< scf.in > scf.out", true), Calculation(exec, "< nscf.in > nscf.out", true)]
                 e = load(s, Environment("test"))
-                save(s, t_jobdir, "testjob", e, c)
+                save(s, t_jobdir, e, c; name = "testjob")
                 @test state(s, t_jobdir) == RemoteHPC.Saved
 
                 td = load(s, t_jobdir)
@@ -115,12 +115,11 @@ for sched in scheds
                 @test read(joinpath(t_jobdir, "scf.out"), String) == "test input"
                 @test read(joinpath(t_jobdir, "nscf.out"), String) == "test input2"
                 exec = load(s, Exec("test"))
-                sleep_e = Exec(name="sleep", exec="sleep", input_on_stdin = false, parallel=false)
-                c = [Calculation(exec, "scf.in", "scf.out", true), Calculation(exec, "nscf.in", "nscf.out", true), Calculation(sleep_e, "10", "", true)]
+                sleep_e = Exec(name="sleep", exec="sleep", parallel=false)
+                c = [Calculation(exec, "< scf.in > scf.out", true), Calculation(exec, "< nscf.in > nscf.out", true), Calculation(sleep_e, "10", true)]
                 e = load(s, Environment("test"))
-
                    
-                submit(s, t_jobdir, "testjob", e, c)
+                submit(s, t_jobdir, e, c, name="testjob")
                 while state(s, t_jobdir) != RemoteHPC.Running
                     sleep(0.1)
                 end

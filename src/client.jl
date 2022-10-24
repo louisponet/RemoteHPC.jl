@@ -180,9 +180,9 @@ function isalive(s::Server)
     return false
 end
 
-function save(s::Server, dir::AbstractString, n::AbstractString, e::Environment, calcs::Vector{Calculation})
+function save(s::Server, dir::AbstractString, e::Environment, calcs::Vector{Calculation}; name = "RemoteHPC_job")
     adir = abspath(s, dir)
-    HTTP.post(s, "/job/" * adir, (n, e, calcs))
+    HTTP.post(s, "/job/" * adir, (name, e, calcs))
     return adir
 end
 
@@ -206,15 +206,15 @@ function submit(s::Server, dir::AbstractString)
     adir = abspath(s, dir)
     HTTP.put(s, "/job/" * adir)
 end
-function submit(s::Server, dir::AbstractString, n::AbstractString, args...)
-    adir = save(s, dir, n, args...)
+function submit(s::Server, dir::AbstractString, e::Environment, calcs::Vector{Calculation}; kwargs...)
+    adir = save(s, dir, e, calcs; kwargs...)
     submit(s, adir)
     return adir
 end
 
 function abort(s::Server, dir::AbstractString)
     adir = abspath(s, dir)
-    resp = HTTP.post(s, "/abort/" *adir)
+    resp = HTTP.post(s, "/abort/" * adir)
     if resp.status == 200
         id = JSON3.read(resp.body, Int)
         @info "Aborted job with id $id."

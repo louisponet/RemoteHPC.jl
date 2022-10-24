@@ -33,15 +33,7 @@ end
 
 function Base.write(io::IO, c::Calculation)
     write(io, c.exec)
-    if c.exec.input_on_stdin
-        write(io, "< ")
-    end
-    if !isempty(c.infile)
-        write(io, "$(c.infile)")
-    end
-    if !isempty(c.outfile)
-        write(io, " > $(c.outfile)")
-    end
+    write(io, " $(c.args)")
 end
 
 function write_exports_string(io::IO, e::Environment)

@@ -43,7 +43,7 @@ include("io.jl")
     save(e)
     e1 = load(e1)
     e = load(e)
-    calcs = [Calculation(e, "scf.in", "scf.out", true)]
+    calcs = [Calculation(e, "< scf.in > scf.out", true)]
     rm(e1)
     rm(e)
 end
