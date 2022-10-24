@@ -1,9 +1,15 @@
 abstract type Storable end
 
-storage_name(s::S) where {S<:Storable} = hasfield(S, :name) ? s.name : error("Please define a name function for type $S.")
-storage_directory(s::S) where {S<:Storable} = error("Please define a storage_directory function for type $S.")
+function storage_name(s::S) where {S<:Storable}
+    return hasfield(S, :name) ? s.name : error("Please define a name function for type $S.")
+end
+function storage_directory(s::S) where {S<:Storable}
+    return error("Please define a storage_directory function for type $S.")
+end
 
-storage_path(s::S) where {S<:Storable} = joinpath("storage", storage_directory(s), storage_name(s) * ".json")
+function storage_path(s::S) where {S<:Storable}
+    return joinpath("storage", storage_directory(s), storage_name(s) * ".json")
+end
 storage_url(s::Storable) = joinpath("/database", storage_path(s))
 verify(s::Storable) = nothing
 
@@ -23,11 +29,11 @@ function save(s::Storable)
         @warn "Overwriting previously existing item at $p."
     end
     verify(s)
-    JSON3.write(p, s)
+    return JSON3.write(p, s)
 end
 function save(server, s::Storable)
     url = storage_url(s)
-    HTTP.post(server, url, s)
+    return HTTP.post(server, url, s)
 end
 
 """
@@ -37,20 +43,20 @@ end
 
 Loads a previously stored item from the `server`. If `server` is not specified the local item is loaded.
 """
-function load(s::S) where {S <: Storable}
+function load(s::S) where {S<:Storable}
     p = config_path(storage_path(s))
     if !ispath(p)
         error("No item found at $p.")
     end
-    JSON3.read(read(p, String), S)
+    return JSON3.read(read(p, String), S)
 end
-function load(server, s::S) where {S <: Storable}
+function load(server, s::S) where {S<:Storable}
     url = storage_url(s)
     if isempty(s.name)
         if s == S() # asking for all possibilities
             return JSON3.read(HTTP.get(server, splitdir(url)[1]).body, Vector{String})
         else
-            n = name(server, s) 
+            n = name(server, s)
             if n !== nothing # stored item with matching data existed, just replace name
                 s.name = n
                 return s
@@ -61,7 +67,7 @@ function load(server, s::S) where {S <: Storable}
         end
     elseif exists(server, s) # asking for a stored item
         return JSON3.read(JSON3.read(HTTP.get(server, url).body, String), S)
-            
+
     else
         @warn "No exact match found. Returning the closest options..."
         return JSON3.read(HTTP.get(server, url, s).body, Vector{String})
@@ -97,7 +103,7 @@ function replacements(s::S) where {S<:Storable}
             end
         end
     end
-    p = sortperm(score, rev=true)
+    p = sortperm(score; rev = true)
     best = maximum(score)
     return all[p][1:length(findall(isequal(best), score))]
 end
@@ -105,7 +111,7 @@ end
 function name(s::S) where {S<:Storable}
     dir = config_path("storage", storage_directory(s))
     for f in readdir(dir)
-        t =  JSON3.read(read(joinpath(dir, f), String), S)
+        t = JSON3.read(read(joinpath(dir, f), String), S)
         if t == s
             return t.name
         end
@@ -132,10 +138,10 @@ function Base.rm(s::Storable)
     if !ispath(p)
         error("No item found at $p.")
     end
-    rm(p)
+    return rm(p)
 end
-    
+
 function Base.rm(server, s::Storable)
-    url = storage_url(s) 
-    HTTP.put(server, url)
+    url = storage_url(s)
+    return HTTP.put(server, url)
 end

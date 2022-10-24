@@ -30,15 +30,16 @@ include("schedulers.jl")
 include("servers.jl")
 include("runtime.jl")
 include("api.jl")
-include("client.jl") 
+include("client.jl")
 include("io.jl")
 
 @precompile_all_calls begin
     s = local_server()
     t = "asdfe"
     t2 = "edfasdf"
-    e = Exec(name = t2, exec="srun")
-    e1 = Environment(t, Dict("-N" => 3, "partition" => "default", "time" => "00:01:01"), Dict("OMP_NUM_THREADS" => 1), "", "", e)
+    e = Exec(; name = t2, exec = "srun")
+    e1 = Environment(t, Dict("-N" => 3, "partition" => "default", "time" => "00:01:01"),
+                     Dict("OMP_NUM_THREADS" => 1), "", "", e)
     save(e1)
     save(e)
     e1 = load(e1)

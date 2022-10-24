@@ -31,21 +31,20 @@ end
 
 storage_directory(::Server) = "servers"
 
-function configure_scheduler(s::Server; interactive=true)
+function configure_scheduler(s::Server; interactive = true)
     scheduler = nothing
     if haskey(ENV, "DFC_SCHEDULER")
-         
         sched = ENV["DFC_SCHEDULER"]
         if occursin("hq", lowercase(sched))
             cmd = get(ENV, "DFC_SCHEDULER_CMD", "hq")
-            return HQ(server_command=cmd)
+            return HQ(; server_command = cmd)
         elseif lowercase(sched) == "slurm"
             return Slurm()
         else
             error("Scheduler $sched not recognized please set a different DFC_SCHEDULER environment var.")
         end
     end
-            
+
     for t in (HQ(), Slurm())
         scmd = submit_cmd(t)
         if server_command(s, "which $scmd").exitcode == 0
@@ -57,12 +56,13 @@ function configure_scheduler(s::Server; interactive=true)
         return scheduler
     end
     if interactive && scheduler === nothing
-        choice = request("Couldn't identify the scheduler select one: ", RadioMenu(["SLURM", "HQ", "BASH"]))
+        choice = request("Couldn't identify the scheduler select one: ",
+                         RadioMenu(["SLURM", "HQ", "BASH"]))
 
         if choice == 1
             scheduler = Slurm()
         elseif choice == 2
-            scheduler = HQ(server_command = ask_input(String, "HQ command", "hq"))
+            scheduler = HQ(; server_command = ask_input(String, "HQ command", "hq"))
         elseif choice == 3
             scheduler = Bash()
         else
@@ -73,10 +73,10 @@ function configure_scheduler(s::Server; interactive=true)
         return Bash()
     end
 end
-    
-function configure!(s::Server; interactive=true)
+
+function configure!(s::Server; interactive = true)
     if interactive
-        s.port  = ask_input(Int, "Port", s.port)
+        s.port = ask_input(Int, "Port", s.port)
     end
     if s.domain == "localhost"
         julia = joinpath(Sys.BINDIR, "julia")
@@ -93,18 +93,19 @@ function configure!(s::Server; interactive=true)
     s.julia_exec = julia
 
     # Try auto configuring the scheduler
-    scheduler = configure_scheduler(s; interactive=interactive)
+    scheduler = configure_scheduler(s; interactive = interactive)
     if scheduler === nothing
         return
     end
-    s.scheduler = scheduler     
+    s.scheduler = scheduler
     hdir = server_command(s, "pwd").stdout[1:end-1]
     if interactive
         dir = ask_input(String, "Default Jobs directory", hdir)
         if dir != hdir
             while server_command(s, "ls $dir").exitcode != 0
                 # @warn "$dir, no such file or directory."
-                local_choice = request("No such directory, creating one?", RadioMenu(["yes", "no"]))
+                local_choice = request("No such directory, creating one?",
+                                       RadioMenu(["yes", "no"]))
                 if local_choice == 1
                     result = server_command(s, "mkdir -p $dir")
                     if result.exitcode != 0
@@ -115,7 +116,7 @@ function configure!(s::Server; interactive=true)
                 end
             end
         end
-        
+
         s.root_jobdir = dir
         s.max_concurrent_jobs = ask_input(Int, "Max Concurrent Jobs", s.max_concurrent_jobs)
     else
@@ -141,12 +142,12 @@ end
 
 Runs through interactive configuration of the local [`Server`](@ref).
 """
-function configure_local(;interactive=true)
+function configure_local(; interactive = true)
     host = gethostname()
-    @assert !exists(Server(name=host)) "Local server already configured."
+    @assert !exists(Server(; name = host)) "Local server already configured."
     user = get(ENV, "USER", "nouser")
-    s = Server(name=host, username=user, domain="localhost")
-    configure!(s; interactive=interactive)
+    s = Server(; name = host, username = user, domain = "localhost")
+    configure!(s; interactive = interactive)
 
     @info "saving server configuration...", s
     save(s)
@@ -161,7 +162,7 @@ function configure_local(;interactive=true)
 end
 
 function Server(s::String)
-    t = Server(name=s)
+    t = Server(; name = s)
     if exists(t)
         return load(t)
     end
@@ -170,11 +171,11 @@ function Server(s::String)
     if occursin("@", s)
         username, domain = split(s, "@")
         name = ask_input(String, "Please specify the Server's identifying name")
-        if exists(Server(name=name, username=username, domain=domain))
+        if exists(Server(; name = name, username = username, domain = domain))
             @warn "A server with $name was already configured and will be overwritten."
         end
     elseif s == "localhost"
-        username = get(ENV,"USER","nouser")
+        username = get(ENV, "USER", "nouser")
         domain = "localhost"
         name = s
     else
@@ -188,17 +189,18 @@ function Server(s::String)
     if server !== nothing
         server.name = name
         server.domain = domain
-        
-        change_config = request("Found remote server configuration:\n$server\nIs this correct?", RadioMenu(["yes", "no"]))
+
+        change_config = request("Found remote server configuration:\n$server\nIs this correct?",
+                                RadioMenu(["yes", "no"]))
         change_config == -1 && return
         if change_config == 2
             configure!(server)
         end
         configure_local_port!(server)
-             
+
     else
         @info "Couldn't pull server configuration, creating new..."
-        server = Server(name=name, domain=domain, username=username)
+        server = Server(; name = name, domain = domain, username = username)
         configure!(server)
         configure_local_port!(server)
     end
@@ -218,9 +220,10 @@ function install_RemoteHPC(s::Server, julia_exec = nothing)
             @info "No julia found in PATH, installing it..."
             t = tempname()
             mkdir(t)
-            download("https://julialang-s3.julialang.org/bin/linux/x64/1.8/julia-1.8.2-linux-x86_64.tar.gz", joinpath(t, "julia.tar.gz"))
+            download("https://julialang-s3.julialang.org/bin/linux/x64/1.8/julia-1.8.2-linux-x86_64.tar.gz",
+                     joinpath(t, "julia.tar.gz"))
             push(joinpath(t, "julia.tar.gz"), s, "julia-1.8.2-linux-x86_64.tar.gz")
-            rm(t, recursive=true)
+            rm(t; recursive = true)
             res = server_command(s, "tar -xf julia-1.8.2-linux-x86_64.tar.gz")
             @assert res.exitcode == 0 "Issue unpacking julia executable on cluster, please install julia manually"
             julia_exec = "~/julia-1.8.2/bin/julia"
@@ -234,11 +237,11 @@ function install_RemoteHPC(s::Server, julia_exec = nothing)
     @assert res.exitcode == 0 "Something went wrong installing RemoteHPC on server, please install manually"
 
     @info "RemoteHPC installed on remote cluster, try starting the server with `start(server)`."
-    s.julia_exec = julia_exec
+    return s.julia_exec = julia_exec
 end
 
 function update_RemoteHPC(s::Server)
-    alive =  isalive(s)
+    alive = isalive(s)
     if alive
         @info "Server running, killing it first."
         kill(s)
@@ -253,8 +256,10 @@ function update_RemoteHPC(s::Server)
 end
 
 Base.joinpath(s::Server, p...) = joinpath(s.root_jobdir, p...)
-Base.ispath(s::Server, p...) = islocal(s) ? ispath(p...) :
-    JSON3.read(HTTP.get(s, "/ispath/" * joinpath(p...)).body, Bool)
+function Base.ispath(s::Server, p...)
+    return islocal(s) ? ispath(p...) :
+           JSON3.read(HTTP.get(s, "/ispath/" * joinpath(p...)).body, Bool)
+end
 
 function Base.symlink(s::Server, p, p2)
     if islocal(s)
@@ -267,13 +272,13 @@ end
 
 function Base.rm(s::Server, p::String)
     if islocal(s)
-        isdir(p) ? rm(p, recursive=true) : rm(p)
+        isdir(p) ? rm(p; recursive = true) : rm(p)
     else
         HTTP.post(s, "/rm/" * p)
         return nothing
     end
 end
-function Base.read(s::Server, path::String, type=nothing)
+function Base.read(s::Server, path::String, type = nothing)
     if islocal(s)
         return type === nothing ? read(path) : read(path, type)
     else
@@ -297,9 +302,11 @@ read_config(config_file) = parse_config(read(config_file, String))
 function load_config(username, domain)
     hostname = gethostname(username, domain)
     if domain == "localhost"
-        return parse_config(read(config_path("storage","servers","$hostname.json"),String))
+        return parse_config(read(config_path("storage", "servers", "$hostname.json"),
+                                 String))
     else
-        t = server_command(username, domain, "cat ~/.julia/config/RemoteHPC/$hostname/storage/servers/$hostname.json")
+        t = server_command(username, domain,
+                           "cat ~/.julia/config/RemoteHPC/$hostname/storage/servers/$hostname.json")
         if t.exitcode != 0
             return nothing
         else
@@ -310,23 +317,31 @@ end
 function load_config(s::Server)
     if isalive(s)
         return JSON3.read(HTTP.get(s, "/server/config").body, Server)
-    else 
+    else
         return load_config(s.username, s.domain)
     end
 end
 
-Base.gethostname(username::AbstractString, domain::AbstractString) = split(server_command(username, domain, "hostname").stdout)[1]
+function Base.gethostname(username::AbstractString, domain::AbstractString)
+    return split(server_command(username, domain, "hostname").stdout)[1]
+end
 Base.gethostname(s::Server) = gethostname(s.username, s.domain)
 ssh_string(s::Server) = s.username * "@" * s.domain
-http_string(s::Server) = s.local_port != 0 ? "http://localhost:$(s.local_port)" : "http://$(s.domain):$(s.port)"
+function http_string(s::Server)
+    return s.local_port != 0 ? "http://localhost:$(s.local_port)" :
+           "http://$(s.domain):$(s.port)"
+end
 
 function Base.rm(s::Server)
     return ispath(joinpath(SERVER_DIR, s.name * ".json")) &&
            rm(joinpath(SERVER_DIR, s.name * ".json"))
 end
 
-find_tunnel(s) =
-    getfirst(x->occursin("ssh -N -f -L $(s.local_port)", x), split(read(pipeline(`ps aux` , stdout = `grep $(s.local_port)`), String), "\n"))
+function find_tunnel(s)
+    return getfirst(x -> occursin("ssh -N -f -L $(s.local_port)", x),
+                    split(read(pipeline(`ps aux`; stdout = `grep $(s.local_port)`), String),
+                          "\n"))
+end
 
 function destroy_tunnel(s)
     t = find_tunnel(s)
@@ -340,10 +355,11 @@ function destroy_tunnel(s)
 end
 
 function construct_tunnel(s)
-    run(Cmd(`ssh -N -f -L $(s.local_port):localhost:$(s.port) $(ssh_string(s))`, detach=true))
+    return run(Cmd(`ssh -N -f -L $(s.local_port):localhost:$(s.port) $(ssh_string(s))`;
+                   detach = true))
 end
 
-function ask_input(::Type{T}, message, default=nothing) where {T}
+function ask_input(::Type{T}, message, default = nothing) where {T}
     if default === nothing
         t = ""
         print(message * ": ")
@@ -363,7 +379,7 @@ function ask_input(::Type{T}, message, default=nothing) where {T}
         return t
     end
 end
-   
+
 """
     pull(server::Server, remote::String, loc::String)
 
@@ -376,7 +392,8 @@ function pull(server::Server, remote::String, loc::String)
     else
         out = Pipe()
         err = Pipe()
-        run(pipeline(`scp -r $(ssh_string(server) * ":" * remote) $path`, stdout=out, stderr=err))
+        run(pipeline(`scp -r $(ssh_string(server) * ":" * remote) $path`; stdout = out,
+                     stderr = err))
         close(out.in)
         close(err.in)
         stderr = read(err, String)
@@ -398,7 +415,8 @@ function push(filename::String, server::Server, server_file::String)
     else
         out = Pipe()
         err = Pipe()
-        run(pipeline(`scp $filename $(ssh_string(server) * ":" * server_file)`, stdout=out, stderr=err))
+        run(pipeline(`scp $filename $(ssh_string(server) * ":" * server_file)`;
+                     stdout = out, stderr = err))
         close(out.in)
         close(err.in)
     end
@@ -409,26 +427,27 @@ function server_command(username, domain, cmd::String)
     out = Pipe()
     err = Pipe()
     if domain == "localhost"
-        process = run(pipeline(ignorestatus(Cmd(string.(split(cmd)))), stdout=out, stderr=err))
+        process = run(pipeline(ignorestatus(Cmd(string.(split(cmd)))); stdout = out,
+                               stderr = err))
     else
-        process = run(pipeline(ignorestatus(Cmd(["ssh", "$(username * "@" * domain)",  string.(split(cmd))...])), stdout=out, stderr=err))
+        process = run(pipeline(ignorestatus(Cmd(["ssh", "$(username * "@" * domain)",
+                                                 string.(split(cmd))...])); stdout = out,
+                               stderr = err))
     end
     close(out.in)
     close(err.in)
 
     stdout = read(out, String)
     stderr = read(err, String)
-    return (
-      stdout = stdout,
-      stderr = stderr,
-      exitcode = process.exitcode
-    )
+    return (stdout = stdout,
+            stderr = stderr,
+            exitcode = process.exitcode)
 end
-    
+
 server_command(s::Server, cmd) = server_command(s.username, s.domain, cmd)
 
 function has_modules(s::Server)
-    try 
+    try
         server_command(s, "module avail").code == 0
     catch
         false
@@ -448,8 +467,7 @@ function Base.readdir(s::Server, dir::String)
     return JSON3.read(resp.body, Vector{String})
 end
 
-Base.abspath(s::Server, p) =
-    isabspath(p) ? p : joinpath(s, p)
+Base.abspath(s::Server, p) = isabspath(p) ? p : joinpath(s, p)
 
 function Base.mtime(s::Server, p)
     if islocal(s)
@@ -468,6 +486,3 @@ function Base.filesize(s::Server, p)
         return JSON3.read(resp.body, Float64)
     end
 end
-
-
-

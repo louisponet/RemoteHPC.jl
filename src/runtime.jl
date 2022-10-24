@@ -4,8 +4,8 @@ mutable struct Job
 end
 
 Base.@kwdef mutable struct QueueInfo
-    full_queue::Dict{String, Job} = Dict{String, Job}()
-    current_queue::Dict{String, Job} = Dict{String, Job}()
+    full_queue::Dict{String,Job} = Dict{String,Job}()
+    current_queue::Dict{String,Job} = Dict{String,Job}()
     submit_queue::Vector{String} = String[]
 end
 StructTypes.StructType(::Type{QueueInfo}) = StructTypes.Mutable()
@@ -37,7 +37,7 @@ function Base.fill!(qu::Queue, s::Scheduler, init)
                 lock(qu) do q
                     copy!(q.full_queue, tq.full_queue)
                     copy!(q.current_queue, tq.current_queue)
-                    copy!(q.submit_queue, tq.submit_queue)
+                    return copy!(q.submit_queue, tq.submit_queue)
                 end
             end
         end
@@ -64,7 +64,7 @@ function Base.fill!(qu::Queue, s::Scheduler, init)
         end
     else
         squeue = queue(s)
-        lock(qu) do q 
+        lock(qu) do q
             for (d, i) in q.current_queue
                 if haskey(squeue, d)
                     state = pop!(squeue, d)[2]
@@ -82,17 +82,19 @@ function Base.fill!(qu::Queue, s::Scheduler, init)
             for (k, v) in squeue
                 q.current_queue[k] = Job(v...)
             end
-       end 
+        end
     end
     return qu
 end
 
 function main_loop(s::Server, submit_channel, queue, main_loop_stop)
     fill!(queue, s.scheduler, true)
-    @info (timestamp=string(Dates.now()), username = get(ENV,"USER","nouser"), host = gethostname(), pid=getpid())
+    @info (timestamp = string(Dates.now()), username = get(ENV, "USER", "nouser"),
+           host = gethostname(), pid = getpid())
 
     # Used to identify if multiple servers are running in order to selfdestruct 
-    log_mtimes = mtime.(joinpath.((config_path("logs/runtimes/"),), readdir(config_path("logs/runtimes/"))))
+    log_mtimes = mtime.(joinpath.((config_path("logs/runtimes/"),),
+                                  readdir(config_path("logs/runtimes/"))))
     t = Threads.@spawn while !main_loop_stop[]
         try
             fill!(queue, s.scheduler, false)
@@ -113,19 +115,20 @@ function main_loop(s::Server, submit_channel, queue, main_loop_stop)
     Threads.@spawn while !main_loop_stop[]
         monitor_issues(log_mtimes)
 
-        try  
+        try
             print_log(queue)
         catch
             @error "Logging error:" e stacktrace(catch_backtrace())
         end
         if ispath(config_path("self_destruct"))
-            @info (timestamp = Dates.now(), message = "self_destruct found, self destructing...")
+            @info (timestamp = Dates.now(),
+                   message = "self_destruct found, self destructing...")
             exit()
         end
         sleep(5)
     end
     fetch(t)
-    JSON3.write(config_path("jobs", "queue.json"), queue.info)
+    return JSON3.write(config_path("jobs", "queue.json"), queue.info)
 end
 
 function print_log(queue)
@@ -133,7 +136,8 @@ function print_log(queue)
 end
 
 function monitor_issues(log_mtimes)
-    new_mtimes = mtime.(joinpath.((config_path("logs/runtimes"),), readdir(config_path("logs/runtimes"))))
+    new_mtimes = mtime.(joinpath.((config_path("logs/runtimes"),),
+                                  readdir(config_path("logs/runtimes"))))
     if length(new_mtimes) != length(log_mtimes)
         @error "More Server logs got created signalling a server was started while a previous was running."
         touch(config_path("self_destruct"))
@@ -146,11 +150,11 @@ function monitor_issues(log_mtimes)
     daemon_log = config_path("logs/daemon/restapi.log")
     if filesize(daemon_log) > 1e9
         open(daemon_log, "w") do f
-            write(f, "")
+            return write(f, "")
         end
     end
 end
-   
+
 # Jobs are submitted by the daemon, using supplied job jld2 from the caller (i.e. another machine)
 # Additional files are packaged with the job
 function handle_job_submission!(queue, s::Server, submit_channel)
@@ -169,7 +173,7 @@ function handle_job_submission!(queue, s::Server, submit_channel)
                     id = submit(s.scheduler, j)
                     @info (string(Dates.now()), j, id, Pending)
                     lock(queue) do q
-                        q.current_queue[j] = Job(id, Pending)
+                        return q.current_queue[j] = Job(id, Pending)
                     end
                     curtries = -1
                 catch e
@@ -185,7 +189,7 @@ function handle_job_submission!(queue, s::Server, submit_channel)
             @warn "Submission job at dir: $j is not a directory."
         end
     end
-    deleteat!(lines, 1:n_submit)
+    return deleteat!(lines, 1:n_submit)
 end
 
 function server_logger()
@@ -198,12 +202,12 @@ end
 function restapi_logger()
     p = config_path("logs/daemon")
     mkpath(p)
-    FileLogger(joinpath(p, "restapi.log"); append = false)
+    return FileLogger(joinpath(p, "restapi.log"); append = false)
 end
 function job_logger(id::Int)
     p = config_path("logs/jobs")
     mkpath(p)
-    FileLogger(joinpath(p, "$id.log"))
+    return FileLogger(joinpath(p, "$id.log"))
 end
 
 function requestHandler(handler)
@@ -230,7 +234,8 @@ function requestHandler(handler)
         end
         stop = Dates.now()
         @info (timestamp = string(stop), event = "End", tid = Threads.threadid(),
-               method = req.method, target = req.target, duration = Dates.value(stop - start),
+               method = req.method, target = req.target,
+               duration = Dates.value(stop - start),
                status = resp.status, bodysize = length(resp.body))
         return resp
     end
@@ -242,14 +247,14 @@ function AuthHandler(handler, user_uuid::UUID)
             uuid = HTTP.header(req, "USER-UUID")
             if UUID(uuid) == user_uuid
                 t = ThreadPools.spawnbg() do
-                    handler(req)
+                    return handler(req)
                 end
                 return fetch(t)
             end
         end
         return HTTP.Response(401, "unauthorized")
     end
-end     
+end
 
 function julia_main()::Cint
     # initialize_config_dir()
@@ -257,17 +262,16 @@ function julia_main()::Cint
     port, server = listenany(ip"0.0.0.0", 8080)
     s.port = port
     user_uuid = UUID(s.uuid)
-    
+
     router = HTTP.Router()
     submit_channel = Channel{String}(Inf)
     job_queue = Queue()
     setup_core_api!(router)
     setup_job_api!(router, submit_channel, job_queue, s.scheduler)
     setup_database_api!(router)
-    
-        
+
     should_stop = Ref(false)
-    HTTP.register!(router, "GET", "/server/config", (req) -> s)    
+    HTTP.register!(router, "GET", "/server/config", (req) -> s)
 
     t = @tspawnat min(Threads.nthreads(), 2) with_logger(server_logger()) do
         try
@@ -277,12 +281,15 @@ function julia_main()::Cint
             rethrow(e)
         end
     end
-    HTTP.register!(router, "PUT", "/server/kill", (req) -> (should_stop[]=true; fetch(t); true))
+    HTTP.register!(router, "PUT", "/server/kill",
+                   (req) -> (should_stop[] = true; fetch(t); true))
     save(s)
     with_logger(restapi_logger()) do
-        @info (timestamp = string(Dates.now()), username = ENV["USER"], host = gethostname(), pid=getpid(), port=port)
-        
-        @async HTTP.serve(router |> requestHandler |> x -> AuthHandler(x, user_uuid), "0.0.0.0", port, server=server)
+        @info (timestamp = string(Dates.now()), username = ENV["USER"],
+               host = gethostname(), pid = getpid(), port = port)
+
+        @async HTTP.serve(router |> requestHandler |> x -> AuthHandler(x, user_uuid),
+                          "0.0.0.0", port, server = server)
         while !should_stop[]
             sleep(1)
         end
@@ -290,4 +297,3 @@ function julia_main()::Cint
     close(server)
     return 0
 end
-

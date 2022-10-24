@@ -16,7 +16,7 @@ get_server_config(req)          = local_server()
 api_ispath(req::HTTP.Request)   = ispath(path(req))
 api_read(req::HTTP.Request)     = read(path(req))
 api_write(req::HTTP.Request)    = write(path(req), req.body)
-api_rm(req::HTTP.Request)       = rm(path(req), recursive=true)
+api_rm(req::HTTP.Request)       = rm(path(req); recursive = true)
 api_symlink(req::HTTP.Request)  = symlink(JSON3.read(req.body, Vector{String})...)
 api_readdir(req::HTTP.Request)  = readdir(path(req))
 api_mtime(req::HTTP.Request)    = mtime(path(req))
@@ -45,7 +45,7 @@ function setup_core_api!(router::HTTP.Router)
     HTTP.register!(router, "GET", "/api/**", execute_function)
     HTTP.register!(router, "POST", "/write/**", api_write)
     HTTP.register!(router, "POST", "/rm/**", api_rm)
-    HTTP.register!(router, "POST", "/symlink/", api_symlink)
+    return HTTP.register!(router, "POST", "/symlink/", api_symlink)
 end
 
 submit_job(req, channel) = put!(channel, path(req))
@@ -55,8 +55,10 @@ function get_job(job_dir::AbstractString, queue::Queue)
     if info === nothing
         info = get(queue.info.full_queue, job_dir, nothing)
     end
-    
-    return (info, JSON3.read(read(joinpath(job_dir, ".remotehpc_info")), Tuple{String, Environment, Vector{Calculation}})...)
+
+    return (info,
+            JSON3.read(read(joinpath(job_dir, ".remotehpc_info")),
+                       Tuple{String,Environment,Vector{Calculation}})...)
 end
 
 function get_jobs(state::JobState, queue::Queue)
@@ -83,20 +85,21 @@ function get_jobs(dirfuzzy::AbstractString, queue::Queue)
     return jobs
 end
 
-save_job(req::HTTP.Request, args...) =
-    save_job(path(req),
-             JSON3.read(req.body, Tuple{String, Environment, Vector{Calculation}}),
-             args...)
+function save_job(req::HTTP.Request, args...)
+    return save_job(path(req),
+                    JSON3.read(req.body, Tuple{String,Environment,Vector{Calculation}}),
+                    args...)
+end
 
-function save_job(dir::AbstractString, job_info::Tuple, queue::Queue, sched::Scheduler) 
+function save_job(dir::AbstractString, job_info::Tuple, queue::Queue, sched::Scheduler)
     # Needs to be done so the inputs `dir` also changes.
     mkpath(dir)
     open(joinpath(dir, "job.sh"), "w") do f
-        write(f, job_info, sched)
+        return write(f, job_info, sched)
     end
-    JSON3.write(joinpath(dir, ".remotehpc_info"), job_info) 
+    JSON3.write(joinpath(dir, ".remotehpc_info"), job_info)
     lock(queue) do q
-        q.full_queue[dir] = Job(-1, Saved)
+        return q.full_queue[dir] = Job(-1, Saved)
     end
 end
 
@@ -110,21 +113,23 @@ function abort(req::HTTP.Request, queue::Queue, sched::Scheduler)
     lock(queue) do q
         j = pop!(q.current_queue, jdir)
         j.state = Cancelled
-        q.full_queue[jdir] = j
+        return q.full_queue[jdir] = j
     end
-        
+
     return j.id
 end
 
-function setup_job_api!(router::HTTP.Router, submit_channel, queue::Queue, scheduler::Scheduler)
+function setup_job_api!(router::HTTP.Router, submit_channel, queue::Queue,
+                        scheduler::Scheduler)
     HTTP.register!(router, "POST", "/job/**", (req) -> save_job(req, queue, scheduler))
     HTTP.register!(router, "PUT", "/job/**", (req) -> submit_job(req, submit_channel))
     HTTP.register!(router, "GET", "/job/**", (req) -> get_job(path(req), queue))
     HTTP.register!(router, "GET", "/jobs/state",
-        (req) -> get_jobs(JSON3.read(req.body, JobState), queue))
+                   (req) -> get_jobs(JSON3.read(req.body, JobState), queue))
     HTTP.register!(router, "GET", "/jobs/fuzzy",
-        (req) -> get_jobs(JSON3.read(req.body, String), queue))
-    HTTP.register!(router, "POST", "/abort/**", (req) -> abort(req, queue, scheduler))
+                   (req) -> get_jobs(JSON3.read(req.body, String), queue))
+    return HTTP.register!(router, "POST", "/abort/**",
+                          (req) -> abort(req, queue, scheduler))
 end
 
 function load(req::HTTP.Request)
@@ -137,13 +142,13 @@ function load(req::HTTP.Request)
         try
             return load(val)
         catch
-            return map(x->storage_name(x), replacements(val))
+            return map(x -> storage_name(x), replacements(val))
         end
     else
-        cpath = config_path(p) 
+        cpath = config_path(p)
         if isempty(splitext(p)[end])
             # Here we return the possibilities
-            return map(x->splitext(x)[1], readdir(cpath))
+            return map(x -> splitext(x)[1], readdir(cpath))
         else
             return read(cpath, String)
         end
@@ -165,7 +170,7 @@ end
 function database_rm(req)
     p = config_path(path(req))
     ispath(p)
-    rm(p)
+    return rm(p)
 end
 
 function name(req)
@@ -178,6 +183,5 @@ function setup_database_api!(router)
     HTTP.register!(router, "GET", "/database/storage/**", load)
     HTTP.register!(router, "POST", "/database/storage/**", save)
     HTTP.register!(router, "PUT", "/database/storage/**", database_rm)
-    HTTP.register!(router, "GET", "/database/name", name)
+    return HTTP.register!(router, "GET", "/database/name", name)
 end
-

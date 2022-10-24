@@ -23,7 +23,7 @@ Will first transform `flags` into a `Vector{ExecFlag}`, and construct the [`Exec
     modules::Vector{String} = String[]
     parallel::Bool = true
 end
-Exec(str::String;kwargs...) = Exec(name=str; kwargs...)
+Exec(str::String; kwargs...) = Exec(; name = str, kwargs...)
 Base.:(==)(e1::Exec, e2::Exec) = e1.name == e2.name
 storage_directory(::Exec) = "execs"
 StructTypes.StructType(::Exec) = StructTypes.Mutable()
@@ -40,7 +40,8 @@ function isrunnable(e::Exec)
         else
             cmd = `echo "source /etc/profile && ldd $fullpath"`
         end
-        run(pipeline(pipeline(cmd, stdout=ignorestatus(`bash`)), stdout = out, stderr=err))
+        run(pipeline(pipeline(cmd; stdout = ignorestatus(`bash`)); stdout = out,
+                     stderr = err))
         close(out.in)
         close(err.in)
 
@@ -68,9 +69,8 @@ StructTypes.StructType(::Calculation) = StructTypes.Mutable()
     postamble::String = ""
     parallel_exec::Exec = Exec()
 end
-Environment(name::String; kwargs...) = Environment(name=name; kwargs...)
+Environment(name::String; kwargs...) = Environment(; name = name, kwargs...)
 Base.:(==)(e1::Environment, e2::Environment) = e1.name == e2.name
 storage_directory(::Environment) = "environments"
-
 
 StructTypes.StructType(::Environment) = StructTypes.Mutable()
