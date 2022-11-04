@@ -18,6 +18,8 @@ api_readdir(req::HTTP.Request)  = readdir(path(req))
 api_mtime(req::HTTP.Request)    = mtime(path(req))
 api_filesize(req::HTTP.Request) = filesize(path(req))
 api_realpath(req::HTTP.Request) = realpath(path(req))
+api_mkpath(req::HTTP.Request)   = mkpath(path(req))
+api_cp(req::HTTP.Request)       = cp(JSON3.read(req.body, Tuple{String, String})...; force=true)
 
 function execute_function(req::HTTP.Router)
     funcstr = Meta.parse(path(req))
@@ -43,7 +45,9 @@ function setup_core_api!(router::HTTP.Router)
     HTTP.register!(router, "GET", "/api/**", execute_function)
     HTTP.register!(router, "POST", "/write/**", api_write)
     HTTP.register!(router, "POST", "/rm/**", api_rm)
-    return HTTP.register!(router, "POST", "/symlink/", api_symlink)
+    HTTP.register!(router, "POST", "/symlink/", api_symlink)
+    HTTP.register!(router, "POST", "/mkpath/**", api_mkpath)
+    HTTP.register!(router, "POST", "/cp/", api_cp)
 end
 
 submit_job(req, channel) = put!(channel, path(req))
@@ -54,6 +58,7 @@ function get_job(req::HTTP.Request, queue::Queue)
     if info === nothing
         info = get(queue.info.full_queue, job_dir, nothing)
     end
+    info = info === nothing ? Job(-1, Unknown) : info
     tquery = HTTP.queryparams(URI(req.target))
     if isempty(tquery) || !haskey(tquery, "data")
         return [info,
@@ -70,11 +75,17 @@ function get_job(req::HTTP.Request, queue::Queue)
             elseif d == "state"
                 push!(out, info.state)
             elseif d == "name"
-                push!(out, jinfo[1])
+                if jinfo !== nothing
+                    push!(out, jinfo[1])
+                end
             elseif d == "environment"
-                push!(out, jinfo[2])
+                if jinfo !== nothing
+                    push!(out, jinfo[2])
+                end
             elseif d == "calculations"
-                push!(out, jinfo[3])
+                if jinfo !== nothing
+                    push!(out, jinfo[3])
+                end
             end
         end
         return out
@@ -171,7 +182,7 @@ function save(req::HTTP.Request)
 end
 
 function database_rm(req)
-    p = config_path(strip(req.target, '/'))
+    p = config_path(strip(req.target, '/')) * ".json"
     ispath(p)
     return rm(p)
 end

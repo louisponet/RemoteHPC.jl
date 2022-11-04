@@ -281,6 +281,14 @@ function Base.write(s::Server, path::String, v)
         return JSON3.read(resp.body, Int)
     end
 end
+function Base.mkpath(s::Server, dir)
+    HTTP.post(s, URI(path="/mkpath/" * dir))
+    return dir
+end
+function Base.cp(s::Server, src, dst)
+    HTTP.post(s, URI(path="/cp/"), (src, dst))
+    return dst
+end
 
 parse_config(config) = JSON3.read(config, Server)
 read_config(config_file) = parse_config(read(config_file, String))
