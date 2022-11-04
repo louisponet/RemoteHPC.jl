@@ -244,14 +244,14 @@ end
 Base.joinpath(s::Server, p...) = joinpath(s.jobdir, p...)
 function Base.ispath(s::Server, p...)
     return islocal(s) ? ispath(p...) :
-           JSON3.read(HTTP.get(s, "/ispath/" * joinpath(p...)).body, Bool)
+           JSON3.read(HTTP.get(s, URI(path="/ispath/" * joinpath(p...))).body, Bool)
 end
 
 function Base.symlink(s::Server, p, p2)
     if islocal(s)
         symlink(p, p2)
     else
-        HTTP.post(s, "/symlink/", [p, p2])
+        HTTP.post(s, URI(path="/symlink/"), [p, p2])
         return nothing
     end
 end
@@ -260,7 +260,7 @@ function Base.rm(s::Server, p::String)
     if islocal(s)
         isdir(p) ? rm(p; recursive = true) : rm(p)
     else
-        HTTP.post(s, "/rm/" * p)
+        HTTP.post(s, URI(path="/rm/" * p))
         return nothing
     end
 end
@@ -268,7 +268,7 @@ function Base.read(s::Server, path::String, type = nothing)
     if islocal(s)
         return type === nothing ? read(path) : read(path, type)
     else
-        resp = HTTP.get(s, "/read/" * path)
+        resp = HTTP.get(s, URI(path="/read/" * path))
         t = JSON3.read(resp.body, Vector{UInt8})
         return type === nothing ? t : type(t)
     end
@@ -277,7 +277,7 @@ function Base.write(s::Server, path::String, v)
     if islocal(s)
         write(path, v)
     else
-        resp = HTTP.post(s, "/write/" * path, Vector{UInt8}(v))
+        resp = HTTP.post(s, URI(path="/write/" * path), Vector{UInt8}(v))
         return JSON3.read(resp.body, Int)
     end
 end
@@ -302,7 +302,7 @@ function load_config(username, domain)
 end
 function load_config(s::Server)
     if isalive(s)
-        return JSON3.read(HTTP.get(s, "/server/config").body, Server)
+        return JSON3.read(HTTP.get(s, URI(path="/server/config")).body, Server)
     else
         return load_config(s.username, s.domain)
     end
@@ -313,8 +313,8 @@ function Base.gethostname(username::AbstractString, domain::AbstractString)
 end
 Base.gethostname(s::Server) = gethostname(s.username, s.domain)
 ssh_string(s::Server) = s.username * "@" * s.domain
-function http_string(s::Server)
-    return "http://localhost:$(s.port)"
+function http_uri(s::Server, uri = HTTP.URI())
+    return HTTP.URI(uri, scheme="http", port=s.port, host = "localhost")
 end
 
 function Base.rm(s::Server)
@@ -458,8 +458,34 @@ function available_modules(s::Server)
     end
 end
 
+function HTTP.request(method::String, s::Server, url, body; kwargs...)
+    header = ["USER-UUID" => s.uuid]
+    return HTTP.request(method, http_uri(s, url), header, JSON3.write(body);
+                        kwargs...)
+end
+
+function HTTP.request(method::String, s::Server, url, body::Vector{UInt8}; kwargs...)
+    header = ["USER-UUID" => s.uuid]
+    return HTTP.request(method, http_uri(s, url), header, body; kwargs...)
+end
+
+function HTTP.request(method::String, s::Server, url; connect_timeout = 1, retries = 2,
+                      kwargs...)
+    header = ["USER-UUID" => s.uuid]
+
+    return HTTP.request(method, http_uri(s, url), header;
+                        connect_timeout = connect_timeout, retries = retries, kwargs...)
+end
+
+for f in (:get, :put, :post, :head, :patch)
+    str = uppercase(string(f))
+    @eval function HTTP.$(f)(s::Server, url::AbstractString, args...; kwargs...)
+        return HTTP.request("$($str)", s, url, args...; kwargs...)
+    end
+end
+
 function Base.readdir(s::Server, dir::String)
-    resp = HTTP.get(s, "/readdir/" * abspath(s, dir))
+    resp = HTTP.get(s, URI(path="/readdir/" * abspath(s, dir)))
     return JSON3.read(resp.body, Vector{String})
 end
 
@@ -469,7 +495,7 @@ function Base.mtime(s::Server, p)
     if islocal(s)
         return mtime(p)
     else
-        resp = HTTP.get(s, "/mtime/" * p)
+        resp = HTTP.get(s, URI(path="/mtime/" * p))
         return JSON3.read(resp.body, Float64)
     end
 end
@@ -478,7 +504,16 @@ function Base.filesize(s::Server, p)
     if islocal(s)
         return filesize(p)
     else
-        resp = HTTP.get(s, "/filesize/" * p)
+        resp = HTTP.get(s, URI(path="/filesize/" * p))
         return JSON3.read(resp.body, Float64)
+    end
+end
+
+function Base.realpath(s::Server, p)
+    if islocal(s)
+        return realpath(p)
+    else
+        resp = HTTP.get(s, URI(path="/realpath/" * p))
+        return JSON3.read(resp.body, String)
     end
 end

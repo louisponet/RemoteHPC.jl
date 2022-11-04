@@ -1,30 +1,3 @@
-function HTTP.request(method::String, s::Server, url, body; kwargs...)
-    header = ["Type" => replace("$(typeof(body))", "RemoteHPC." => ""),
-              "USER-UUID" => s.uuid]
-    return HTTP.request(method, string(http_string(s), url), header, JSON3.write(body);
-                        kwargs...)
-end
-
-function HTTP.request(method::String, s::Server, url, body::Vector{UInt8}; kwargs...)
-    header = ["Type" => "$(typeof(body))", "USER-UUID" => s.uuid]
-    return HTTP.request(method, string(http_string(s), url), header, body; kwargs...)
-end
-
-function HTTP.request(method::String, s::Server, url; connect_timeout = 1, retries = 2,
-                      kwargs...)
-    header = ["USER-UUID" => s.uuid]
-
-    return HTTP.request(method, string(http_string(s), url), header;
-                        connect_timeout = connect_timeout, retries = retries, kwargs...)
-end
-
-for f in (:get, :put, :post, :head, :patch)
-    str = uppercase(string(f))
-    @eval function HTTP.$(f)(s::Server, url::AbstractString, args...; kwargs...)
-        return HTTP.request("$($str)", s, url, args...; kwargs...)
-    end
-end
-
 """
     start(s::Server)
 
@@ -117,7 +90,7 @@ end
 Kills the daemon process on [`Server`](@ref) `s`.
 """
 function Base.kill(s::Server)
-    HTTP.put(s, "/server/kill")
+    HTTP.put(s, URI(path="/server/kill"))
     destroy_tunnel(s)
     while isalive(s)
         sleep(0.1)
@@ -147,7 +120,7 @@ the return is `false`.
 """
 function isalive(s::Server)
     try
-        return HTTP.get(s, "/isalive"; connect_timeout = 2, retries = 2) !== nothing
+        return HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
     catch
         if !islocal(s)
             t = find_tunnel(s)
@@ -157,7 +130,7 @@ function isalive(s::Server)
                 remote_server === nothing && return false
                 s.port = construct_tunnel(s, remote_server.port)
                 try
-                    return HTTP.get(s, "/isalive"; connect_timeout = 2, retries = 2) !== nothing
+                    return HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
                 catch
                     # Still no connection -> destroy tunnel because server dead
                     destroy_tunnel(s)
@@ -177,17 +150,17 @@ end
 function save(s::Server, dir::AbstractString, e::Environment, calcs::Vector{Calculation};
               name = "RemoteHPC_job")
     adir = abspath(s, dir)
-    HTTP.post(s, "/job/" * adir, (name, e, calcs))
+    HTTP.post(s, URI(path="/job/" * adir), (name, e, calcs))
     return adir
 end
 
 function load(s::Server, dir::AbstractString)
     adir = abspath(s, dir)
     if !ispath(s, joinpath(adir, ".remotehpc_info"))
-        resp = HTTP.get(s, "/jobs/fuzzy/", dir)
+        resp = HTTP.get(s, URI(path="/jobs/fuzzy/"), dir)
         return JSON3.read(resp.body, Vector{String})
     else
-        resp = HTTP.get(s, "/job/" * adir)
+        resp = HTTP.get(s, URI(path="/job/" * adir))
         info, name, environment, calculations = JSON3.read(resp.body,
                                                            Tuple{Job,String,Environment,
                                                                  Vector{Calculation}})
@@ -195,13 +168,13 @@ function load(s::Server, dir::AbstractString)
     end
 end
 function load(s::Server, state::JobState)
-    resp = HTTP.get(s, "/jobs/state/", state)
+    resp = HTTP.get(s, URI(path="/jobs/state/"), state)
     return JSON3.read(resp.body, Vector{String})
 end
 
 function submit(s::Server, dir::AbstractString)
     adir = abspath(s, dir)
-    return HTTP.put(s, "/job/" * adir)
+    return HTTP.put(s, URI(path="/job/" * adir))
 end
 function submit(s::Server, dir::AbstractString, e::Environment, calcs::Vector{Calculation};
                 kwargs...)
@@ -212,7 +185,7 @@ end
 
 function abort(s::Server, dir::AbstractString)
     adir = abspath(s, dir)
-    resp = HTTP.post(s, "/abort/" * adir)
+    resp = HTTP.post(s, URI(path="/abort/" * adir))
     if resp.status == 200
         id = JSON3.read(resp.body, Int)
         @info "Aborted job with id $id."
@@ -222,5 +195,8 @@ function abort(s::Server, dir::AbstractString)
 end
 
 function state(s::Server, dir::AbstractString)
-    return load(s, dir).info.state
+    adir = abspath(s, dir)
+    url = URI(path = "/job/" * adir, query = Dict("data" => ["state"]))
+    resp = HTTP.get(s, url)
+    return JSON3.read(resp.body, Tuple{JobState})[1]
 end

@@ -2,6 +2,7 @@ module RemoteHPC
 using LoggingExtras
 using ThreadPools
 using HTTP
+using HTTP.URIs: URI
 using StructTypes
 using Sockets
 using JSON3

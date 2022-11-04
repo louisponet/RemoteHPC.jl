@@ -1,6 +1,5 @@
-
 function path(req::HTTP.Request)
-    p = req.target
+    p = HTTP.URI(req.target).path
     id = findnext(isequal('/'), p, 2)
     if length(p) < id + 1
         return ""
@@ -18,6 +17,7 @@ api_symlink(req::HTTP.Request)  = symlink(JSON3.read(req.body, Vector{String})..
 api_readdir(req::HTTP.Request)  = readdir(path(req))
 api_mtime(req::HTTP.Request)    = mtime(path(req))
 api_filesize(req::HTTP.Request) = filesize(path(req))
+api_realpath(req::HTTP.Request) = realpath(path(req))
 
 function execute_function(req::HTTP.Router)
     funcstr = Meta.parse(path(req))
@@ -35,6 +35,7 @@ function setup_core_api!(router::HTTP.Router)
     HTTP.register!(router, "GET", "/server_config", get_server_config)
     HTTP.register!(router, "GET", "/isalive", (res) -> true)
     HTTP.register!(router, "GET", "/ispath/**", api_ispath)
+    HTTP.register!(router, "GET", "/realpath/**", api_realpath)
     HTTP.register!(router, "GET", "/read/**", api_read)
     HTTP.register!(router, "GET", "/readdir/**", api_readdir)
     HTTP.register!(router, "GET", "/mtime/**", api_mtime)
@@ -47,15 +48,37 @@ end
 
 submit_job(req, channel) = put!(channel, path(req))
 
-function get_job(job_dir::AbstractString, queue::Queue)
+function get_job(req::HTTP.Request, queue::Queue)
+    job_dir = path(req)
     info = get(queue.info.current_queue, job_dir, nothing)
     if info === nothing
         info = get(queue.info.full_queue, job_dir, nothing)
     end
-
-    return (info,
-            JSON3.read(read(joinpath(job_dir, ".remotehpc_info")),
-                       Tuple{String,Environment,Vector{Calculation}})...)
+    tquery = HTTP.queryparams(URI(req.target))
+    if isempty(tquery) || !haskey(tquery, "data")
+        return [info,
+                JSON3.read(read(joinpath(job_dir, ".remotehpc_info")),
+                           Tuple{String,Environment,Vector{Calculation}})...]
+    else
+        dat = tquery["data"] isa Vector ? tquery["data"] : [tquery["data"]]
+        out = []
+        jinfo = any(x -> x in ("name", "environment", "calculations"), dat) ? JSON3.read(read(joinpath(job_dir, ".remotehpc_info")),
+                           Tuple{String,Environment,Vector{Calculation}}) : nothing
+        for d in dat
+            if d == "id"
+                push!(out, info.id)
+            elseif d == "state"
+                push!(out, info.state)
+            elseif d == "name"
+                push!(out, jinfo[1])
+            elseif d == "environment"
+                push!(out, jinfo[2])
+            elseif d == "calculations"
+                push!(out, jinfo[3])
+            end
+        end
+        return out
+    end
 end
 
 function get_jobs(state::JobState, queue::Queue)
@@ -120,7 +143,7 @@ function setup_job_api!(router::HTTP.Router, submit_channel, queue::Queue,
                         scheduler::Scheduler)
     HTTP.register!(router, "POST", "/job/**", (req) -> save_job(req, queue, scheduler))
     HTTP.register!(router, "PUT", "/job/**", (req) -> submit_job(req, submit_channel))
-    HTTP.register!(router, "GET", "/job/**", (req) -> get_job(path(req), queue))
+    HTTP.register!(router, "GET", "/job/**", (req) -> get_job(req, queue))
     HTTP.register!(router, "GET", "/jobs/state",
                    (req) -> get_jobs(JSON3.read(req.body, JobState), queue))
     HTTP.register!(router, "GET", "/jobs/fuzzy",
@@ -130,55 +153,31 @@ function setup_job_api!(router::HTTP.Router, submit_channel, queue::Queue,
 end
 
 function load(req::HTTP.Request)
-    p = path(req)
-    if !isempty(HTTP.body(req))
-        # This part basically exists for when more complicated things need to be done
-        # when loading an entity (e.g. a Job).
-        typ = Symbol(HTTP.header(req, "Type"))
-        val = eval(:(JSON3.read($(req.body), $typ)))
-        try
-            return load(val)
-        catch
-            return map(x -> storage_name(x), replacements(val))
-        end
+    p = config_path(strip(req.target, '/'))
+    if isdir(p)
+        return map(x -> splitext(x)[1], readdir(p))
     else
-        cpath = config_path(p)
-        if isempty(splitext(p)[end])
-            # Here we return the possibilities
-            return map(x -> splitext(x)[1], readdir(cpath))
-        else
-            return read(cpath, String)
+        p *= ".json"
+        if ispath(p)
+            return read(p, String)
         end
     end
 end
 
 function save(req::HTTP.Request)
-    p = path(req)
-    if HTTP.hasheader(req, "Type")
-        # This part basically exists for when more complicated things need to be done
-        # when storing an entity (e.g. a Job).
-        typ = Symbol(HTTP.header(req, "Type"))
-        eval(:(save(JSON3.read($(req.body), $typ))))
-    else
-        mkpath(splitdir(p)[1])
-        write(p, req.body)
-    end
+    p = config_path(strip(req.target, '/'))
+    mkpath(splitdir(p)[1])
+    write(p * ".json", req.body)
 end
+
 function database_rm(req)
-    p = config_path(path(req))
+    p = config_path(strip(req.target, '/'))
     ispath(p)
     return rm(p)
 end
 
-function name(req)
-    typ = Symbol(HTTP.header(req, "Type"))
-    val = eval(:(JSON3.read($(req.body), $typ)))
-    return name(val)
-end
-
 function setup_database_api!(router)
-    HTTP.register!(router, "GET", "/database/storage/**", load)
-    HTTP.register!(router, "POST", "/database/storage/**", save)
-    HTTP.register!(router, "PUT", "/database/storage/**", database_rm)
-    return HTTP.register!(router, "GET", "/database/name", name)
+    HTTP.register!(router, "GET", "/storage/**", load)
+    HTTP.register!(router, "POST", "/storage/**", save)
+    HTTP.register!(router, "PUT", "/storage/**", database_rm)
 end
