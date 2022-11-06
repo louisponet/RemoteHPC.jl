@@ -1,24 +1,32 @@
 function flagstring(f, v)
     out = ""
+    eq_sign = false
     if f[1] != '-'
         if length(f) == 1
             out *= "-$f "
         else
-            out *= "--$f="
+            out *= "--$f"
+            eq_sign = true
         end
     else
         if f[1:2] == "--"
-            out *= "$f="
+            out *= "$f"
+            eq_sign = true
         else
             out *= "$f "
         end
     end
-    if !(v isa AbstractString) && length(v) > 1
-        for v_ in v
-            out *= "$v_ "
+    if v !== nothing && !isempty(v)
+        if eq_sign
+            out *= "="
         end
-    else
-        out *= "$v "
+        if !(v isa AbstractString) && length(v) > 1
+            for v_ in v
+                out *= "$v_ "
+            end
+        else
+            out *= "$v "
+        end
     end
     return out
 end
