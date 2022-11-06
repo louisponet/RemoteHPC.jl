@@ -282,7 +282,7 @@ function julia_main()::Cint
         end
     end
     HTTP.register!(router, "PUT", "/server/kill",
-                   (req) -> (should_stop[] = true; fetch(t); true))
+                   (req) -> (should_stop[] = true; true))
     save(s)
     with_logger(restapi_logger()) do
         @info (timestamp = string(Dates.now()), username = ENV["USER"],
@@ -294,6 +294,7 @@ function julia_main()::Cint
             sleep(1)
         end
     end
+    fetch(t)
     close(server)
     return 0
 end

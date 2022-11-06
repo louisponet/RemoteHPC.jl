@@ -129,8 +129,12 @@ function isalive(s::Server)
                 remote_server = load_config(s.username, s.domain)
                 remote_server === nothing && return false
                 s.port = construct_tunnel(s, remote_server.port)
+                s.uuid = remote_server.uuid
                 try
-                    return HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
+                    if HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
+                        save(s)
+                        return true
+                    end
                 catch
                     # Still no connection -> destroy tunnel because server dead
                     destroy_tunnel(s)
