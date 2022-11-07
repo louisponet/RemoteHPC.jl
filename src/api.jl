@@ -1,11 +1,6 @@
 function path(req::HTTP.Request)
-    p = HTTP.URI(req.target).path
-    id = findnext(isequal('/'), p, 2)
-    if length(p) < id + 1
-        return ""
-    else
-        return p[id+1:end]
-    end
+    p = URI(req.target)
+    return HTTP.queryparams(p)["path"]
 end
 
 get_server_config(req)          = local_server()

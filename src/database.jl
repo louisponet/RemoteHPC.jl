@@ -10,7 +10,7 @@ end
 function storage_path(s::S) where {S<:Storable}
     return joinpath("storage", storage_directory(s), storage_name(s))
 end
-storage_uri(s::Storable) = URI(path="/" * storage_path(s))
+storage_uri(s::Storable) = URI(path="/", query = Dict("path" => storage_path(s)))
 verify(s::Storable) = nothing
 
 # These are the standard functions where things are saved as simple jsons in the
@@ -55,7 +55,7 @@ function load(server, s::S) where {S<:Storable}
     if exists(server, s) # asking for a stored item
         return JSON3.read(JSON3.read(HTTP.get(server, uri).body, String), S)
     else
-        return JSON3.read(HTTP.get(server, URI(path=splitdir(uri.path)[1])).body, Vector{String})
+        return JSON3.read(HTTP.get(server, URI(path=splitdir(uri.path)[1], query = uri.query)).body, Vector{String})
     end
 end
 

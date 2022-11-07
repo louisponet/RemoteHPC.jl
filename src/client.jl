@@ -154,7 +154,7 @@ end
 function save(s::Server, dir::AbstractString, e::Environment, calcs::Vector{Calculation};
               name = "RemoteHPC_job")
     adir = abspath(s, dir)
-    HTTP.post(s, URI(path="/job/" * adir), (name, e, calcs))
+    HTTP.post(s, URI(path="/job/", query = Dict("path" => adir)), (name, e, calcs))
     return adir
 end
 
@@ -164,7 +164,7 @@ function load(s::Server, dir::AbstractString)
         resp = HTTP.get(s, URI(path="/jobs/fuzzy/"), dir)
         return JSON3.read(resp.body, Vector{String})
     else
-        resp = HTTP.get(s, URI(path="/job/" * adir))
+        resp = HTTP.get(s, URI(path="/job/", query=Dict("path" => adir)))
         info, name, environment, calculations = JSON3.read(resp.body,
                                                            Tuple{Job,String,Environment,
                                                                  Vector{Calculation}})
@@ -178,7 +178,7 @@ end
 
 function submit(s::Server, dir::AbstractString)
     adir = abspath(s, dir)
-    return HTTP.put(s, URI(path="/job/" * adir))
+    return HTTP.put(s, URI(path="/job/", query = Dict("path" => adir)))
 end
 function submit(s::Server, dir::AbstractString, e::Environment, calcs::Vector{Calculation};
                 kwargs...)
@@ -189,7 +189,7 @@ end
 
 function abort(s::Server, dir::AbstractString)
     adir = abspath(s, dir)
-    resp = HTTP.post(s, URI(path="/abort/" * adir))
+    resp = HTTP.post(s, URI(path="/abort/", query=Dict("path" => adir)))
     if resp.status == 200
         id = JSON3.read(resp.body, Int)
         @info "Aborted job with id $id."
@@ -200,7 +200,7 @@ end
 
 function state(s::Server, dir::AbstractString)
     adir = abspath(s, dir)
-    url = URI(path = "/job/" * adir, query = Dict("data" => ["state"]))
+    url = URI(path = "/job/", query = Dict("path" => adir, "data" => ["state"]))
     resp = HTTP.get(s, url)
     return JSON3.read(resp.body, Tuple{JobState})[1]
 end

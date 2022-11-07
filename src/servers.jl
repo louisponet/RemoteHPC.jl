@@ -244,7 +244,7 @@ end
 Base.joinpath(s::Server, p...) = joinpath(s.jobdir, p...)
 function Base.ispath(s::Server, p...)
     return islocal(s) ? ispath(p...) :
-           JSON3.read(HTTP.get(s, URI(path="/ispath/" * joinpath(p...))).body, Bool)
+           JSON3.read(HTTP.get(s, URI(path="/ispath/", query=Dict("path"=> joinpath(p...)))).body, Bool)
 end
 
 function Base.symlink(s::Server, p, p2)
@@ -260,7 +260,7 @@ function Base.rm(s::Server, p::String)
     if islocal(s)
         isdir(p) ? rm(p; recursive = true) : rm(p)
     else
-        HTTP.post(s, URI(path="/rm/" * p))
+        HTTP.post(s, URI(path="/rm/", query=Dict("path" => p)))
         return nothing
     end
 end
@@ -268,7 +268,7 @@ function Base.read(s::Server, path::String, type = nothing)
     if islocal(s)
         return type === nothing ? read(path) : read(path, type)
     else
-        resp = HTTP.get(s, URI(path="/read/" * path))
+        resp = HTTP.get(s, URI(path="/read/", query = Dict("path" =>path)))
         t = JSON3.read(resp.body, Vector{UInt8})
         return type === nothing ? t : type(t)
     end
@@ -277,12 +277,12 @@ function Base.write(s::Server, path::String, v)
     if islocal(s)
         write(path, v)
     else
-        resp = HTTP.post(s, URI(path="/write/" * path), Vector{UInt8}(v))
+        resp = HTTP.post(s, URI(path="/write/", query = Dict("path" => path)), Vector{UInt8}(v))
         return JSON3.read(resp.body, Int)
     end
 end
 function Base.mkpath(s::Server, dir)
-    HTTP.post(s, URI(path="/mkpath/" * dir))
+    HTTP.post(s, URI(path="/mkpath/", query=Dict("path" => dir)))
     return dir
 end
 function Base.cp(s::Server, src, dst)
@@ -493,7 +493,7 @@ for f in (:get, :put, :post, :head, :patch)
 end
 
 function Base.readdir(s::Server, dir::String)
-    resp = HTTP.get(s, URI(path="/readdir/" * abspath(s, dir)))
+    resp = HTTP.get(s, URI(path="/readdir/", query=Dict("path" => abspath(s, dir))))
     return JSON3.read(resp.body, Vector{String})
 end
 
@@ -503,7 +503,7 @@ function Base.mtime(s::Server, p)
     if islocal(s)
         return mtime(p)
     else
-        resp = HTTP.get(s, URI(path="/mtime/" * p))
+        resp = HTTP.get(s, URI(path="/mtime/", query=Dict("path" =>  p)))
         return JSON3.read(resp.body, Float64)
     end
 end
@@ -512,7 +512,7 @@ function Base.filesize(s::Server, p)
     if islocal(s)
         return filesize(p)
     else
-        resp = HTTP.get(s, URI(path="/filesize/" * p))
+        resp = HTTP.get(s, URI(path="/filesize/", query = Dict("path" => p)))
         return JSON3.read(resp.body, Float64)
     end
 end
@@ -521,7 +521,7 @@ function Base.realpath(s::Server, p)
     if islocal(s)
         return realpath(p)
     else
-        resp = HTTP.get(s, URI(path="/realpath/" * p))
+        resp = HTTP.get(s, URI(path="/realpath/", query=Dict("path" => p)))
         return JSON3.read(resp.body, String)
     end
 end
