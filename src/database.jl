@@ -8,9 +8,9 @@ function storage_directory(s::S) where {S<:Storable}
 end
 
 function storage_path(s::S) where {S<:Storable}
-    return joinpath("storage", storage_directory(s), storage_name(s))
+    return joinpath(storage_directory(s), storage_name(s))
 end
-storage_uri(s::Storable) = URI(path="/", query = Dict("path" => storage_path(s)))
+storage_uri(s::Storable) = URI(path="/storage/", query = Dict("path" => storage_path(s)))
 verify(s::Storable) = nothing
 
 # These are the standard functions where things are saved as simple jsons in the
@@ -23,7 +23,7 @@ verify(s::Storable) = nothing
 Saves an item to the database of `server`. If `server` is not specified the item will be stored in the local database.
 """
 function save(s::Storable)
-    p = config_path(storage_path(s)) * ".json"
+    p = config_path("storage", storage_path(s)) * ".json"
     mkpath(splitdir(p)[1])
     if ispath(p)
         @warn "Overwriting previously existing item at $p."
@@ -44,7 +44,7 @@ end
 Loads a previously stored item from the `server`. If `server` is not specified the local item is loaded.
 """
 function load(s::S) where {S<:Storable}
-    p = config_path(storage_path(s)) * ".json"
+    p = config_path("storage", storage_path(s)) * ".json"
     if !ispath(p)
         error("No item found at $p.")
     end
@@ -55,16 +55,26 @@ function load(server, s::S) where {S<:Storable}
     if exists(server, s) # asking for a stored item
         return JSON3.read(JSON3.read(HTTP.get(server, uri).body, String), S)
     else
-        return JSON3.read(HTTP.get(server, URI(path=splitdir(uri.path)[1], query = uri.query)).body, Vector{String})
+        res = HTTP.get(server, URI(path="/storage/", query= Dict("path"=> splitdir(HTTP.queryparams(uri)["path"])[1])))
+        if !isempty(res.body)
+            return JSON3.read(res.body, Vector{String})
+        else
+            return String[]
+        end
     end
 end
 
-exists(s::Storable) = ispath(config_path(storage_path(s)) * ".json")
+exists(s::Storable) = ispath(config_path("storage", storage_path(s)) * ".json")
 function exists(server, s::Storable)
     uri = storage_uri(s)
     try
-        possibilities = JSON3.read(HTTP.get(server, URI(path=splitdir(uri.path)[1])).body, Vector{String})
-        return storage_name(s) ∈ possibilities
+        res = HTTP.get(server, URI(path="/storage/", query= Dict("path"=> splitdir(HTTP.queryparams(uri)["path"])[1])))
+        if !isempty(res.body)
+            possibilities = JSON3.read(res.body, Vector{String})
+            return storage_name(s) ∈ possibilities
+        else
+            return false
+        end
     catch
         return false
     end
@@ -78,7 +88,7 @@ end
 Removes an item from the database of `server`. If `server` is not specified the item will removed from the local database.
 """
 function Base.rm(s::Storable)
-    p = config_path(storage_path(s)) * ".json"
+    p = config_path("storage", storage_path(s)) * ".json"
     if !ispath(p)
         error("No item found at $p.")
     end

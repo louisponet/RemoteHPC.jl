@@ -159,7 +159,7 @@ function setup_job_api!(router::HTTP.Router, submit_channel, queue::Queue,
 end
 
 function load(req::HTTP.Request)
-    p = config_path(strip(req.target, '/'))
+    p = config_path("storage", path(req))
     if isdir(p)
         return map(x -> splitext(x)[1], readdir(p))
     else
@@ -171,13 +171,13 @@ function load(req::HTTP.Request)
 end
 
 function save(req::HTTP.Request)
-    p = config_path(strip(req.target, '/'))
+    p = config_path("storage", path(req))
     mkpath(splitdir(p)[1])
     write(p * ".json", req.body)
 end
 
 function database_rm(req)
-    p = config_path(strip(req.target, '/')) * ".json"
+    p = config_path("storage", path(req)) * ".json"
     ispath(p)
     return rm(p)
 end
