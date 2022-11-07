@@ -31,17 +31,17 @@ end
 function setup_core_api!(router::HTTP.Router)
     HTTP.register!(router, "GET", "/server_config", get_server_config)
     HTTP.register!(router, "GET", "/isalive", (res) -> true)
-    HTTP.register!(router, "GET", "/ispath/**", api_ispath)
-    HTTP.register!(router, "GET", "/realpath/**", api_realpath)
-    HTTP.register!(router, "GET", "/read/**", api_read)
-    HTTP.register!(router, "GET", "/readdir/**", api_readdir)
-    HTTP.register!(router, "GET", "/mtime/**", api_mtime)
-    HTTP.register!(router, "GET", "/filesize/**", api_filesize)
+    HTTP.register!(router, "GET", "/ispath/", api_ispath)
+    HTTP.register!(router, "GET", "/realpath/", api_realpath)
+    HTTP.register!(router, "GET", "/read/", api_read)
+    HTTP.register!(router, "GET", "/readdir/", api_readdir)
+    HTTP.register!(router, "GET", "/mtime/", api_mtime)
+    HTTP.register!(router, "GET", "/filesize/", api_filesize)
     HTTP.register!(router, "GET", "/api/**", execute_function)
-    HTTP.register!(router, "POST", "/write/**", api_write)
-    HTTP.register!(router, "POST", "/rm/**", api_rm)
+    HTTP.register!(router, "POST", "/write/", api_write)
+    HTTP.register!(router, "POST", "/rm/", api_rm)
     HTTP.register!(router, "POST", "/symlink/", api_symlink)
-    HTTP.register!(router, "POST", "/mkpath/**", api_mkpath)
+    HTTP.register!(router, "POST", "/mkpath/", api_mkpath)
     HTTP.register!(router, "POST", "/cp/", api_cp)
 end
 
@@ -147,14 +147,14 @@ end
 
 function setup_job_api!(router::HTTP.Router, submit_channel, queue::Queue,
                         scheduler::Scheduler)
-    HTTP.register!(router, "POST", "/job/**", (req) -> save_job(req, queue, scheduler))
-    HTTP.register!(router, "PUT", "/job/**", (req) -> submit_job(req, submit_channel))
-    HTTP.register!(router, "GET", "/job/**", (req) -> get_job(req, queue))
+    HTTP.register!(router, "POST", "/job/", (req) -> save_job(req, queue, scheduler))
+    HTTP.register!(router, "PUT", "/job/", (req) -> submit_job(req, submit_channel))
+    HTTP.register!(router, "GET", "/job/", (req) -> get_job(req, queue))
     HTTP.register!(router, "GET", "/jobs/state",
                    (req) -> get_jobs(JSON3.read(req.body, JobState), queue))
     HTTP.register!(router, "GET", "/jobs/fuzzy",
                    (req) -> get_jobs(JSON3.read(req.body, String), queue))
-    return HTTP.register!(router, "POST", "/abort/**",
+    return HTTP.register!(router, "POST", "/abort/",
                           (req) -> abort(req, queue, scheduler))
 end
 
@@ -183,7 +183,7 @@ function database_rm(req)
 end
 
 function setup_database_api!(router)
-    HTTP.register!(router, "GET", "/storage/**", load)
-    HTTP.register!(router, "POST", "/storage/**", save)
-    HTTP.register!(router, "PUT", "/storage/**", database_rm)
+    HTTP.register!(router, "GET", "/storage/", load)
+    HTTP.register!(router, "POST", "/storage/", save)
+    HTTP.register!(router, "PUT", "/storage/", database_rm)
 end
