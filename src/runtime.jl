@@ -265,18 +265,23 @@ function check_connections!(connections)
             t = find_tunnel(s)
             if t === nothing
                 # Tunnel was dead -> create one and try again
-                remote_server = load_config(s.username, s.domain)
-                remote_server === nothing && return false
-                s.port = construct_tunnel(s, remote_server.port)
-                sleep(0.5)
-                s.uuid = remote_server.uuid
                 try
-                    if HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
-                        save(s)
-                        return true
+                    remote_server = load_config(s.username, s.domain)
+                    remote_server === nothing && return false
+                    s.port = construct_tunnel(s, remote_server.port)
+                    sleep(2)
+                    s.uuid = remote_server.uuid
+                    try
+                        if HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
+                            save(s)
+                            return true
+                        end
+                    catch
+                        # Still no connection -> destroy tunnel because server dead
+                        destroy_tunnel(s)
+                        return false
                     end
                 catch
-                    # Still no connection -> destroy tunnel because server dead
                     destroy_tunnel(s)
                     return false
                 end
@@ -287,11 +292,17 @@ function check_connections!(connections)
             end
         end
         retries = 0
-        while !istaskdone(tsk) && retries < 50
+        while !istaskdone(tsk) && retries < 300
             sleep(0.1)
             retries += 1
         end
-        if retries == 50
+        if retries == 300
+            destroy_tunnel(s)
+            try
+                Base.throwto(tsk, InterruptException())
+            catch
+                nothing
+            end
             connections[n] = false
         else
             connections[n] = fetch(tsk)

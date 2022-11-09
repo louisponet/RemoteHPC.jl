@@ -60,8 +60,8 @@ function __init__()
     if isinteractive() && !isalive(s)
         @info "Local server isn't running, starting it"
         start(s)
-        LOCAL_SERVER[] = s
     end
+    LOCAL_SERVER[] = s
 end
 
 
