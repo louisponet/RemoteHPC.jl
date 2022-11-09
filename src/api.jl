@@ -28,9 +28,30 @@ function execute_function(req::HTTP.Router)
     return func(args...)
 end
 
-function setup_core_api!(router::HTTP.Router)
-    HTTP.register!(router, "GET", "/server_config", get_server_config)
-    HTTP.register!(router, "GET", "/isalive", (res) -> true)
+function get_info(req, s::Server)
+    uri = URI(req.target)
+    query = HTTP.queryparams(uri)
+    out = []
+    
+    if !haskey(query, "info")
+        error("No information requested.")
+    else
+        info = length(query["info"]) == 1 ? [query["info"]] : query["info"]
+        for i in info
+            if i == "version"
+                push!(out, PACKAGE_VERSION)
+            elseif i == "server"
+                push!(out, s)
+            end
+        end
+    end
+    return out
+end 
+
+function setup_core_api!(router::HTTP.Router, s::Server, connections)
+    HTTP.register!(router, "GET", "/info/", res -> get_info(res, s))
+    HTTP.register!(router, "GET", "/isalive/", (res) -> true)
+    HTTP.register!(router, "GET", "/isalive/*", (res) -> (n = splitpath(res.target)[end]; haskey(connections, n) && connections[n]))
     HTTP.register!(router, "GET", "/ispath/", api_ispath)
     HTTP.register!(router, "GET", "/realpath/", api_realpath)
     HTTP.register!(router, "GET", "/read/", api_read)

@@ -256,6 +256,50 @@ function AuthHandler(handler, user_uuid::UUID)
     end
 end
 
+function check_connections!(connections)
+    for n in keys(connections)
+        s = load(Server(n))
+        tsk = Threads.@spawn try
+            return HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
+        catch
+            t = find_tunnel(s)
+            if t === nothing
+                # Tunnel was dead -> create one and try again
+                remote_server = load_config(s.username, s.domain)
+                remote_server === nothing && return false
+                s.port = construct_tunnel(s, remote_server.port)
+                sleep(0.5)
+                s.uuid = remote_server.uuid
+                try
+                    if HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
+                        save(s)
+                        return true
+                    end
+                catch
+                    # Still no connection -> destroy tunnel because server dead
+                    destroy_tunnel(s)
+                    return false
+                end
+            else
+                # Tunnel existed but no connection -> server dead
+                destroy_tunnel(s)
+                return false
+            end
+        end
+        retries = 0
+        while !istaskdone(tsk) && retries < 50
+            sleep(0.1)
+            retries += 1
+        end
+        if retries == 50
+            connections[n] = false
+        else
+            connections[n] = fetch(tsk)
+        end
+    end
+        
+end
+
 function julia_main()::Cint
     # initialize_config_dir()
     s = local_server()
@@ -263,14 +307,22 @@ function julia_main()::Cint
     s.port = port
     user_uuid = UUID(s.uuid)
 
+    should_stop = Ref(false)
+    connections = Dict{String, Bool}([n => false for n in load(Server(""))])
+    pop!(connections, s.name)
+    connections_task = Threads.@spawn while !should_stop[]
+        check_connections!(connections)
+        sleep(1)
+    end
+
+
     router = HTTP.Router()
     submit_channel = Channel{String}(Inf)
     job_queue = Queue()
-    setup_core_api!(router)
+    setup_core_api!(router, s, connections)
     setup_job_api!(router, submit_channel, job_queue, s.scheduler)
     setup_database_api!(router)
 
-    should_stop = Ref(false)
     HTTP.register!(router, "GET", "/server/config", (req) -> s)
 
     t = @tspawnat min(Threads.nthreads(), 2) with_logger(server_logger()) do
@@ -295,6 +347,7 @@ function julia_main()::Cint
         end
     end
     fetch(t)
+    fetch(connections_task)
     close(server)
     return 0
 end

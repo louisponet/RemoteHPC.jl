@@ -68,10 +68,7 @@ function start(s::Server)
     if retries == 60
         error("Something went wrong starting the server.")
     else
-        if !islocal(s)
-            remote_server = load_config(s.username, s.domain)
-            s.port = construct_tunnel(s, remote_server.port)
-        else
+        if islocal(s)
             s.port = load_config(s).port
         end
         @info "Daemon on Server $(s.name) started, listening on local port $(s.port)."
@@ -119,35 +116,14 @@ Will try to fetch some data from `s`. If the server is not running this will fai
 the return is `false`.
 """
 function isalive(s::Server)
-    try
-        return HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
-    catch
-        if !islocal(s)
-            t = find_tunnel(s)
-            if t === nothing
-                # Tunnel was dead -> create one and try again
-                remote_server = load_config(s.username, s.domain)
-                remote_server === nothing && return false
-                s.port = construct_tunnel(s, remote_server.port)
-                s.uuid = remote_server.uuid
-                try
-                    if HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
-                        save(s)
-                        return true
-                    end
-                catch
-                    # Still no connection -> destroy tunnel because server dead
-                    destroy_tunnel(s)
-                    return false
-                end
-            else
-                # Tunnel existed but no connection -> server dead
-                destroy_tunnel(s)
-                return false
-            end
-        else
+    if islocal(s)
+        try
+            return HTTP.get(s, URI(path="/isalive/"); connect_timeout = 2, retries = 2) !== nothing
+        catch
             return false
         end
+    else
+        return JSON3.read(HTTP.get(LOCAL_SERVER[], URI(path="/isalive/$(s.name)"); connect_timeout = 2, retries = 2).body, Bool)
     end
 end
 

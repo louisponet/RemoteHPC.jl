@@ -46,7 +46,7 @@ Loads a previously stored item from the `server`. If `server` is not specified t
 function load(s::S) where {S<:Storable}
     p = config_path("storage", storage_path(s)) * ".json"
     if !ispath(p)
-        error("No item found at $p.")
+        return map(x->splitext(x)[1], readdir(splitdir(p)[1]))
     end
     return JSON3.read(read(p, String), S)
 end

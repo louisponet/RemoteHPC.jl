@@ -149,6 +149,7 @@ function configure_local(; interactive = true)
 end
 
 function Server(s::String)
+    isempty(s) && return Server(name="")
     t = Server(; name = s)
     if exists(t)
         return load(t)
@@ -331,7 +332,7 @@ function Base.rm(s::Server)
 end
 
 function find_tunnel(s)
-    return getfirst(x -> occursin("-N -f -L", x),
+    return getfirst(x -> occursin("-N -L", x),
                     split(read(pipeline(`ps aux`; stdout = `grep $(s.port)`), String),
                           "\n"))
 end
@@ -351,8 +352,7 @@ function construct_tunnel(s, remote_port)
     OpenSSH_jll.ssh() do ssh_exec
         port, serv = listenany(Sockets.localhost, 0)
         close(serv)
-        run(Cmd(`$ssh_exec -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -N -f -L $port:localhost:$remote_port $(ssh_string(s))`;
-            detach = true))
+        run(Cmd(`$ssh_exec -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -N -L $port:localhost:$remote_port $(ssh_string(s))`); wait=false)
         return port
     end
 end

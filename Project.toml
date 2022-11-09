@@ -1,7 +1,7 @@
 name = "RemoteHPC"
 uuid = "c4f2a1c4-7655-40d8-82ee-c6ae0a8b7409"
 authors = ["louisponet <louisponet@gmail.com>"]
-version = "0.1.5"
+version = "0.1.6"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
@@ -14,6 +14,7 @@ REPL = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 SnoopPrecompile = "66db9d55-30c0-4569-8b51-7e840670fc0c"
 Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 ThreadPools = "b189fb0b-2eb5-4ed4-bc0c-d34c51242431"
 UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 
