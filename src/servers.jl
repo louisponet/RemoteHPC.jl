@@ -333,7 +333,7 @@ end
 
 function find_tunnel(s)
     return getfirst(x -> occursin("-N -L", x),
-                    split(read(pipeline(`ps aux`; stdout = `grep $(s.port)`), String),
+                    split(read(pipeline(`ps aux`; stdout = `grep $(ssh_string(s))`), String),
                           "\n"))
 end
 
@@ -415,12 +415,13 @@ function push(filename::String, server::Server, server_file::String)
     else
         out = Pipe()
         err = Pipe()
-        # OpenSSH_jll.scp() do scp_exec
-            run(pipeline(`scp $filename $(ssh_string(server) * ":" * server_file)`;
-                     stdout = out, stderr = err))
-        # end
+        OpenSSH_jll.scp() do scp_exec
+            run(pipeline(`$scp_exec $filename $(ssh_string(server) * ":" * server_file)`;
+                     stdout = out))
+        end
         close(out.in)
         close(err.in)
+        @show read(err, String)
     end
 end
 

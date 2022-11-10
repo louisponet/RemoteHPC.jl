@@ -260,7 +260,7 @@ function check_connections!(connections)
     for n in keys(connections)
         s = load(Server(n))
         tsk = Threads.@spawn try
-            return HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
+            return HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2)  !== nothing
         catch
             t = find_tunnel(s)
             if t === nothing
@@ -321,9 +321,21 @@ function julia_main()::Cint
     should_stop = Ref(false)
     connections = Dict{String, Bool}([n => false for n in load(Server(""))])
     pop!(connections, s.name)
-    connections_task = Threads.@spawn while !should_stop[]
-        check_connections!(connections)
-        sleep(1)
+    connections_task = @tspawnat min(Threads.nthreads(), 3) with_logger(server_logger())  do
+        while !should_stop[]
+            try
+                empty!(connections)
+                for n in load(Server(""))
+                    connections[n] = false
+                end
+                pop!(connections, s.name)
+                check_connections!(connections)
+            catch e
+                @error e, stacktrace(catch_backtrace())
+                rethrow(e)
+            end
+            sleep(1)
+        end
     end
 
 
