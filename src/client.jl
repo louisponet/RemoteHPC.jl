@@ -75,7 +75,7 @@ function start(s::Server)
         @info "Saving updated server info..."
         save(s)
     end
-    while !isalive(s)
+    while isalive(LOCAL_SERVER[]) && !isalive(s)
         sleep(0.1)
     end
     return s

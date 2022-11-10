@@ -155,41 +155,41 @@ function monitor_issues(log_mtimes)
     end
 end
 
-# Jobs are submitted by the daemon, using supplied job jld2 from the caller (i.e. another machine)
-# Additional files are packaged with the job
 function handle_job_submission!(queue, s::Server, submit_channel)
-    lines = queue.info.submit_queue
+    job_dirs = queue.info.submit_queue
     njobs = length(queue.info.current_queue)
     while !isempty(submit_channel)
-        push!(lines, take!(submit_channel))
+        push!(job_dirs, take!(submit_channel))
     end
-    n_submit = min(s.max_concurrent_jobs - njobs, length(lines))
+    n_submit = min(s.max_concurrent_jobs - njobs, length(job_dirs))
     for i in 1:n_submit
-        j = lines[i]
-        if ispath(j)
+        job_dir = job_dirs[i]
+        if ispath(job_dir)
             curtries = 0
             while -1 < curtries < 3
                 try
-                    id = submit(s.scheduler, j)
-                    @info (string(Dates.now()), j, id, Pending)
+                    id = submit(s.scheduler, job_dir)
+                    @info (string(Dates.now()), job_dir, id, Pending)
                     lock(queue) do q
-                        return q.current_queue[j] = Job(id, Pending)
+                        return q.current_queue[job_dir] = Job(id, Pending)
                     end
                     curtries = -1
                 catch e
                     curtries += 1
                     sleep(5)
-                    @error e
+                    with_logger(FileLogger(joinpath(job_dir, "submission.err"), append=true)) do
+                        @error e
+                    end
                 end
             end
             if curtries != -1
-                push!(lines, j)
+                push!(job_dirs, job_dir)
             end
         else
-            @warn "Submission job at dir: $j is not a directory."
+            @warn "Submission job at dir: $job_dir is not a directory."
         end
     end
-    return deleteat!(lines, 1:n_submit)
+    return deleteat!(job_dirs, 1:n_submit)
 end
 
 function server_logger()
@@ -259,11 +259,13 @@ end
 function check_connections!(connections)
     for n in keys(connections)
         s = load(Server(n))
+        @info "Checking $n connectivity."
         tsk = Threads.@spawn try
             return HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2)  !== nothing
         catch
             t = find_tunnel(s)
             if t === nothing
+                @info "$n not connected. Trying to connect tunnel."
                 # Tunnel was dead -> create one and try again
                 try
                     remote_server = load_config(s.username, s.domain)
@@ -273,15 +275,18 @@ function check_connections!(connections)
                     s.uuid = remote_server.uuid
                     try
                         if HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
+                            @info "$n connected. Tunnel created at port $(s.port)."
                             save(s)
                             return true
                         end
                     catch
                         # Still no connection -> destroy tunnel because server dead
+                        @info "$n still not connected. Destroying tunnel."
                         destroy_tunnel(s)
                         return false
                     end
                 catch
+                    @info "Something went wrong trying to create tunnel for $n."
                     destroy_tunnel(s)
                     return false
                 end
@@ -297,6 +302,7 @@ function check_connections!(connections)
             retries += 1
         end
         if retries == 300
+            @info "Connecting to $n timed out."
             destroy_tunnel(s)
             try
                 Base.throwto(tsk, InterruptException())
@@ -318,17 +324,19 @@ function julia_main()::Cint
     s.port = port
     user_uuid = UUID(s.uuid)
 
+    logger = server_logger()
+
     should_stop = Ref(false)
     connections = Dict{String, Bool}([n => false for n in load(Server(""))])
     pop!(connections, s.name)
-    connections_task = @tspawnat min(Threads.nthreads(), 3) with_logger(server_logger())  do
+    connections_task = @tspawnat min(Threads.nthreads(), 3) with_logger(logger)  do
         while !should_stop[]
             try
-                empty!(connections)
                 for n in load(Server(""))
-                    connections[n] = false
+                    if !haskey(connections, n)
+                        connections[n] = false
+                    end
                 end
-                pop!(connections, s.name)
                 check_connections!(connections)
             catch e
                 @error e, stacktrace(catch_backtrace())
@@ -348,12 +356,11 @@ function julia_main()::Cint
 
     HTTP.register!(router, "GET", "/server/config", (req) -> s)
 
-    t = @tspawnat min(Threads.nthreads(), 2) with_logger(server_logger()) do
+    t = @tspawnat min(Threads.nthreads(), 2) with_logger(logger) do
         try
             main_loop(s, submit_channel, job_queue, should_stop)
         catch e
             @error e, stacktrace(catch_backtrace())
-            rethrow(e)
         end
     end
     HTTP.register!(router, "PUT", "/server/kill",

@@ -37,11 +37,12 @@ function Base.write(io::IO, e::Exec)
     for (f, v) in e.flags
         write(io, flagstring(f, v))
     end
+    write(io, " ")
 end
 
 function Base.write(io::IO, c::Calculation)
     write(io, c.exec)
-    return write(io, " $(c.args)")
+    return write(io, "$(c.args)")
 end
 
 function write_exports_string(io::IO, e::Environment)

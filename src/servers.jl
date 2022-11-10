@@ -198,7 +198,7 @@ StructTypes.StructType(::Type{Server}) = StructTypes.Mutable()
 islocal(s::Server) = s.domain == "localhost"
 local_server() = Server(gethostname())
 
-function install_RemoteHPC(s::Server, julia_exec = nothing)
+function install_RemoteHPC(s::Server, julia_exec = s.julia_exec)
     # We install the latest version of julia in the homedir
     if julia_exec === nothing
         res = server_command(s, "which julia")
@@ -390,10 +390,10 @@ function pull(server::Server, remote::String, loc::String)
     else
         out = Pipe()
         err = Pipe()
-        OpenSSH_jll.scp() do scp_exec
-            run(pipeline(`$scp_exec -r $(ssh_string(server) * ":" * remote) $path`; stdout = out,
+        # OpenSSH_jll.scp() do scp_exec
+            run(pipeline(`scp -r $(ssh_string(server) * ":" * remote) $path`; stdout = out,
                          stderr = err))
-        end
+        # end
         close(out.in)
         close(err.in)
         stderr = read(err, String)
@@ -415,13 +415,12 @@ function push(filename::String, server::Server, server_file::String)
     else
         out = Pipe()
         err = Pipe()
-        OpenSSH_jll.scp() do scp_exec
-            run(pipeline(`$scp_exec $filename $(ssh_string(server) * ":" * server_file)`;
-                     stdout = out))
-        end
+        # OpenSSH_jll.scp() do scp_exec
+            run(pipeline(`scp $filename $(ssh_string(server) * ":" * server_file)`;
+                     stdout = out, stderr=err))
+        # end
         close(out.in)
         close(err.in)
-        @show read(err, String)
     end
 end
 
