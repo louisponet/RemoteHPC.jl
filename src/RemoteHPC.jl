@@ -53,6 +53,24 @@ end
 export Server, start, restart, local_server, isalive, load, save, submit, abort, state
 export Calculation, Environment, Exec, HQ, Slurm, Bash
 
+const LOCAL_SERVER = Ref{Server}()
+
+function __init__()
+    s = local_server()
+    if isinteractive() && !isalive(s)
+        @info "Local server isn't running, starting it"
+        start(s)
+    end
+    LOCAL_SERVER[] = s
+end
+
+
+using TOML
+
+const PACKAGE_VERSION = let
+    project = TOML.parsefile(joinpath(pkgdir(@__MODULE__), "Project.toml"))
+    VersionNumber(project["version"])
+end
 # if Base.VERSION >= v"1.4.2"
 #     include("precompile.jl")
 #     _precompile_()
