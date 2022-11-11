@@ -332,16 +332,23 @@ function Base.rm(s::Server)
 end
 
 function find_tunnel(s)
-    return getfirst(x -> occursin("-N -L", x),
-                    split(read(pipeline(`ps aux`; stdout = `grep $(ssh_string(s))`), String),
-                          "\n"))
+    if haskey(ENV, "USER")
+        lines = readlines(`ps -o pid,command -u $(ENV["USER"])`)
+    else
+        lines = readlines(`ps -eo pid,command`)
+    end
+    t = getfirst(x -> occursin("-N -L", x) && occursin(ssh_string(s), x),
+                        lines)
+    if t !== nothing
+        return parse(Int, split(t)[1])
+    end
 end
 
 function destroy_tunnel(s)
     t = find_tunnel(s)
     if t !== nothing
         try
-            run(`kill $(split(t)[2])`)
+            run(`kill $t`)
         catch
             nothing
         end

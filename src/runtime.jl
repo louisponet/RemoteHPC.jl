@@ -265,7 +265,6 @@ function check_connections!(connections)
         catch
             t = find_tunnel(s)
             if t === nothing
-                @info "$n not connected. Trying to connect tunnel."
                 # Tunnel was dead -> create one and try again
                 try
                     remote_server = load_config(s.username, s.domain)
@@ -275,18 +274,15 @@ function check_connections!(connections)
                     s.uuid = remote_server.uuid
                     try
                         if HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
-                            @info "$n connected. Tunnel created at port $(s.port)."
                             save(s)
                             return true
                         end
                     catch
                         # Still no connection -> destroy tunnel because server dead
-                        @info "$n still not connected. Destroying tunnel."
                         destroy_tunnel(s)
                         return false
                     end
                 catch
-                    @info "Something went wrong trying to create tunnel for $n."
                     destroy_tunnel(s)
                     return false
                 end
@@ -302,16 +298,28 @@ function check_connections!(connections)
             retries += 1
         end
         if retries == 300
-            @info "Connecting to $n timed out."
             destroy_tunnel(s)
             try
                 Base.throwto(tsk, InterruptException())
             catch
                 nothing
             end
+            if connections[n]
+                @info now(), "Lost connection to $n."
+            end
+            connections[n] = false
+        elseif istaskfailed(tsk)
+            destroy_tunnel(s)
+            if connections[n]
+                @info now(), "Lost connection to $n."
+            end
             connections[n] = false
         else
-            connections[n] = fetch(tsk)
+            connection = fetch(tsk)
+            if connection != connections[n]
+                @info now(), "Connected to $n."
+            end
+            connections[n] = connection
         end
     end
         
@@ -340,7 +348,6 @@ function julia_main()::Cint
                 check_connections!(connections)
             catch e
                 @error e, stacktrace(catch_backtrace())
-                rethrow(e)
             end
             sleep(1)
         end
