@@ -71,6 +71,7 @@ function start(s::Server)
         if islocal(s)
             s.port = load_config(s).port
         end
+        
         @info "Daemon on Server $(s.name) started, listening on local port $(s.port)."
         @info "Saving updated server info..."
         save(s)

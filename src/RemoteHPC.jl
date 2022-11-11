@@ -57,11 +57,11 @@ const LOCAL_SERVER = Ref{Server}()
 
 function __init__()
     s = local_server()
+    LOCAL_SERVER[] = s
     if isinteractive() && !isalive(s)
         @info "Local server isn't running, starting it"
         start(s)
     end
-    LOCAL_SERVER[] = s
 end
 
 
