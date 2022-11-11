@@ -337,7 +337,7 @@ function find_tunnel(s)
     else
         lines = readlines(`ps -eo pid,command`)
     end
-    t = getfirst(x -> occursin("-N -L", x) && occursin(ssh_string(s), x),
+    t = getfirst(x -> occursin("-N -f -L", x) && occursin(ssh_string(s), x),
                         lines)
     if t !== nothing
         return parse(Int, split(t)[1])
@@ -359,7 +359,7 @@ function construct_tunnel(s, remote_port)
     OpenSSH_jll.ssh() do ssh_exec
         port, serv = listenany(Sockets.localhost, 0)
         close(serv)
-        run(Cmd(`$ssh_exec -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -N -L $port:localhost:$remote_port $(ssh_string(s))`); wait=false)
+        run(Cmd(`$ssh_exec -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -N -f -L $port:localhost:$remote_port $(ssh_string(s))`); wait=false)
         return port
     end
 end

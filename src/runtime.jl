@@ -259,6 +259,9 @@ end
 function check_connections!(connections)
     for n in keys(connections)
         s = load(Server(n))
+        if s.domain == "localhost"
+            continue
+        end
         @info "Checking $n connectivity."
         tsk = Threads.@spawn try
             return HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2)  !== nothing
