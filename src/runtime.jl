@@ -86,7 +86,7 @@ function Base.fill!(qu::Queue, s::Scheduler, init)
     end
     return qu
 end
-
+const SLEEP_TIME = Ref(5.0)
 function main_loop(s::Server, submit_channel, queue, main_loop_stop)
     fill!(queue, s.scheduler, true)
     @info (timestamp = string(Dates.now()), username = get(ENV, "USER", "nouser"),
@@ -102,7 +102,7 @@ function main_loop(s::Server, submit_channel, queue, main_loop_stop)
         catch e
             @error "Queue error:" e stacktrace(catch_backtrace())
         end
-        sleep(5)
+        sleep(SLEEP_TIME[])
     end
     Threads.@spawn while !main_loop_stop[]
         try
@@ -110,7 +110,7 @@ function main_loop(s::Server, submit_channel, queue, main_loop_stop)
         catch e
             @error "Job submission error:" e stacktrace(catch_backtrace())
         end
-        sleep(5)
+        sleep(SLEEP_TIME[])
     end
     Threads.@spawn while !main_loop_stop[]
         monitor_issues(log_mtimes)
@@ -125,7 +125,7 @@ function main_loop(s::Server, submit_channel, queue, main_loop_stop)
                    message = "self_destruct found, self destructing...")
             exit()
         end
-        sleep(5)
+        sleep(SLEEP_TIME[])
     end
     fetch(t)
     return JSON3.write(config_path("jobs", "queue.json"), queue.info)
@@ -176,7 +176,7 @@ function handle_job_submission!(queue, s::Server, submit_channel)
                     curtries = -1
                 catch e
                     curtries += 1
-                    sleep(5)
+                    sleep(SLEEP_TIME[])
                     with_logger(FileLogger(joinpath(job_dir, "submission.err"), append=true)) do
                         @error e
                     end
