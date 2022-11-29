@@ -219,7 +219,7 @@ function install_RemoteHPC(s::Server, julia_exec = s.julia_exec)
         end
     end
     @info "Installing RemoteHPC"
-    res = server_command(s, "$julia_exec --project=~/.julia/config/RemoteHPC/ -e 'using Pkg; Pkg.add(\"RemoteHPC\");Pkg.build(\"RemoteHPC\")'")
+    res = server_command(s, "$julia_exec --project=$(depot_path(s))/config/RemoteHPC/ -e 'using Pkg; Pkg.add(\"RemoteHPC\");Pkg.build(\"RemoteHPC\")'")
     @assert res.exitcode == 0 "Something went wrong installing RemoteHPC on server, please install manually"
 
     s.julia_exec = julia_exec
@@ -234,7 +234,7 @@ function update_RemoteHPC(s::Server)
         kill(s)
     end
     @info "Updating RemoteHPC"
-    res = server_command(s, "$(s.julia_exec) --project=~/.julia/config/RemoteHPC/ -e 'using Pkg; Pkg.update(\"RemoteHPC\")'")
+    res = server_command(s, "$(s.julia_exec) --project=$(depot_path(s))/config/RemoteHPC/ -e 'using Pkg; Pkg.update(\"RemoteHPC\")'")
     @assert res.exitcode == 0 "Something went wrong updating RemoteHPC."
     if alive
         @info "Restarting server."
@@ -294,14 +294,16 @@ end
 parse_config(config) = JSON3.read(config, Server)
 read_config(config_file) = parse_config(read(config_file, String))
 
-function load_config(username, domain)
+config_path(s::Server) = joinpath(depot_path(s), "config", "RemoteHPC")
+
+function load_config(username, domain, config_path)
     hostname = gethostname(username, domain)
     if domain == "localhost"
         return parse_config(read(config_path("storage", "servers", "$hostname.json"),
                                  String))
     else
         t = server_command(username, domain,
-                           "cat ~/.julia/config/RemoteHPC/$hostname/storage/servers/$hostname.json")
+                           "cat $(config_path)/$hostname/storage/servers/$hostname.json")
         if t.exitcode != 0
             return nothing
         else
@@ -313,7 +315,7 @@ function load_config(s::Server)
     if isalive(s)
         return JSON3.read(HTTP.get(s, URI(path="/server/config")).body, Server)
     else
-        return load_config(s.username, s.domain)
+        return load_config(s.username, s.domain, config_path(s))
     end
 end
 
@@ -321,6 +323,20 @@ function Base.gethostname(username::AbstractString, domain::AbstractString)
     return split(server_command(username, domain, "hostname").stdout)[1]
 end
 Base.gethostname(s::Server) = gethostname(s.username, s.domain)
+
+function depot_path(s::Server)
+    t = julia_cmd(s, "print(Base.DEPOT_PATH[1])").stdout
+    if occursin("cache", t)
+        return julia_cmd(s, "print(Base.DEPOT_PATH[2])").stdout
+    else
+        return t
+    end
+end
+
+function julia_cmd(s::Server, cmd::String)
+    return server_command(s, "$(s.julia_exec) --startup-file=no -e $cmd")
+end
+
 ssh_string(s::Server) = s.username * "@" * s.domain
 function http_uri(s::Server, uri = HTTP.URI())
     return HTTP.URI(uri, scheme="http", port=s.port, host = "localhost")
@@ -356,12 +372,19 @@ function destroy_tunnel(s)
 end
 
 function construct_tunnel(s, remote_port)
-    OpenSSH_jll.ssh() do ssh_exec
+    if Sys.which("ssh") === nothing
+        OpenSSH_jll.ssh() do ssh_exec
+            port, serv = listenany(Sockets.localhost, 0)
+            close(serv)
+            run(Cmd(`$ssh_exec -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -N -f -L $port:localhost:$remote_port $(ssh_string(s))`); wait=false)
+            return port
+        end
+    else
         port, serv = listenany(Sockets.localhost, 0)
         close(serv)
-        run(Cmd(`$ssh_exec -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -N -f -L $port:localhost:$remote_port $(ssh_string(s))`); wait=false)
+        run(Cmd(`ssh -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -N -f -L $port:localhost:$remote_port $(ssh_string(s))`); wait=false)
         return port
-    end
+    end 
 end
 
 function ask_input(::Type{T}, message, default = nothing) where {T}

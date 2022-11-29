@@ -15,7 +15,7 @@ for p in paths
 end
 
 using UUIDs, JSON3
-
+using Pkg
 """
     configure_local()
 
@@ -55,3 +55,5 @@ function configure_local()
     end
 end
 configure_local()
+Pkg.activate(CONFIG_DIR)
+Pkg.add("RemoteHPC")

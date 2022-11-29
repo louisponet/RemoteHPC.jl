@@ -8,14 +8,20 @@ function start(s::Server)
     @assert !alive "Server is already up and running."
     @info "Starting:\n$s"
     hostname = gethostname(s)
+    conf_path = config_path(s)
+    t = server_command(s, "ls $(conf_path)")
+    if t.exitcode != 0
+        error("RemoteHPC not installed on server. Install it using `RemoteHPC.install_remoteHPC(server)`")
+    end
+    
     if islocal(s)
         t = ispath(config_path("self_destruct"))
     else
-        cmd = "cat ~/.julia/config/RemoteHPC/$hostname/self_destruct"
+        cmd = "cat $(conf_path)/$hostname/self_destruct"
         t = server_command(s, cmd).exitcode == 0
     end
 
-    @assert !t "Self destruction was previously triggered, signalling issues on the Server.\nPlease investigate and if safe, remove ~/.julia/config/RemoteHPC/self_destruct"
+    @assert !t "Self destruction was previously triggered, signalling issues on the Server.\nPlease investigate and if safe, remove $(conf_path)/self_destruct"
 
     if !islocal(s)
         t = deepcopy(s)
@@ -23,7 +29,7 @@ function start(s::Server)
         t.name = hostname
         tf = tempname()
         JSON3.write(tf, t)
-        push(tf, s, "~/.julia/config/RemoteHPC/$hostname/storage/servers/$hostname.json")
+        push(tf, s, "$(conf_path)/$hostname/storage/servers/$hostname.json")
     end
 
     # Here we check what the modify time of the server-side localhost file is.
@@ -34,23 +40,23 @@ function start(s::Server)
         if islocal(s)
             return mtime(config_path("storage", "servers", "$(hostname).json"))
         else
-            cmd = "stat -c %Z  ~/.julia/config/RemoteHPC/$hostname/storage/servers/$(hostname).json"
+            cmd = "stat -c %Z  $(conf_path)/$hostname/storage/servers/$(hostname).json"
             return parse(Int, server_command(s.username, s.domain, cmd)[1])
         end
         return curtime
     end
     firstime = checktime()
 
-    p = "~/.julia/config/RemoteHPC/$hostname/logs/errors.log"
+    p = "$(depot)/config/RemoteHPC/$hostname/logs/errors.log"
     scrpt = "using RemoteHPC; RemoteHPC.julia_main()"
     if s.domain != "localhost"
-        julia_cmd = replace("""$(s.julia_exec) --project=~/.julia/config/RemoteHPC/ --startup-file=no -t 10 -e "using RemoteHPC; RemoteHPC.julia_main()" &> $p""",
+        julia_cmd = replace("""$(s.julia_exec) --project=$(conf_path) --startup-file=no -t 10 -e "using RemoteHPC; RemoteHPC.julia_main()" &> $p""",
                             "'" => "")
         OpenSSH_jll.ssh() do ssh_exec
             run(Cmd(`$ssh_exec -f $(ssh_string(s)) $julia_cmd`; detach = true))
         end
     else
-        e = s.julia_exec * " --project=~/.julia/config/RemoteHPC/"
+        e = s.julia_exec * " --project=$(conf_path)"
         julia_cmd = Cmd([string.(split(e))..., "--startup-file=no", "-t", "auto", "-e",
                          scrpt, "&>", p, "&"])
         run(Cmd(julia_cmd; detach = true); wait = false)
