@@ -56,7 +56,7 @@ export Calculation, Environment, Exec, HQ, Slurm, Bash
 const LOCAL_SERVER = Ref{Server}()
 
 function __init__()
-    if isinteractive() && !isalive(s)
+    if isinteractive() && !isalive(local_server())
         s = local_server()
         LOCAL_SERVER[] = s
         @info "Local server isn't running, starting it"
