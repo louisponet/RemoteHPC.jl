@@ -296,14 +296,14 @@ read_config(config_file) = parse_config(read(config_file, String))
 
 config_path(s::Server) = joinpath(depot_path(s), "config", "RemoteHPC")
 
-function load_config(username, domain, config_path)
+function load_config(username, domain, conf_path)
     hostname = gethostname(username, domain)
     if domain == "localhost"
         return parse_config(read(config_path("storage", "servers", "$hostname.json"),
                                  String))
     else
         t = server_command(username, domain,
-                           "cat $(config_path)/$hostname/storage/servers/$hostname.json")
+                           "cat $(conf_path)/$hostname/storage/servers/$hostname.json")
         if t.exitcode != 0
             return nothing
         else
