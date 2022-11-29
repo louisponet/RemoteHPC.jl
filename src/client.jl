@@ -47,7 +47,7 @@ function start(s::Server)
     end
     firstime = checktime()
 
-    p = "$(depot)/config/RemoteHPC/$hostname/logs/errors.log"
+    p = "$(conf_path)/$hostname/logs/errors.log"
     scrpt = "using RemoteHPC; RemoteHPC.julia_main()"
     if s.domain != "localhost"
         julia_cmd = replace("""$(s.julia_exec) --project=$(conf_path) --startup-file=no -t 10 -e "using RemoteHPC; RemoteHPC.julia_main()" &> $p""",
