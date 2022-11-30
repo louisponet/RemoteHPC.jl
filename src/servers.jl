@@ -153,6 +153,8 @@ function Server(s::String)
     t = Server(; name = s)
     if exists(t)
         return load(t)
+    elseif s == gethostname()
+        return configure_local(interactive=false)
     end
     # Create new server 
     @info "Creating new Server configuration..."
