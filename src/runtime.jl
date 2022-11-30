@@ -178,7 +178,7 @@ function handle_job_submission!(queue, s::Server, submit_channel)
                     curtries += 1
                     sleep(SLEEP_TIME[])
                     with_logger(FileLogger(joinpath(job_dir, "submission.err"), append=true)) do
-                        @error e
+                        @error e stacktrace(catch_backtrace())
                     end
                 end
             end
