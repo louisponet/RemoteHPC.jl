@@ -221,7 +221,7 @@ function install_RemoteHPC(s::Server, julia_exec = s.julia_exec)
         end
     end
     @info "Installing RemoteHPC"
-    res = server_command(s, "$julia_exec --project=$(depot_path(s))/config/RemoteHPC/ -e 'using Pkg; Pkg.add(\"RemoteHPC\");Pkg.build(\"RemoteHPC\")'")
+    res = julia_cmd(s, "using Pkg; Pkg.activate(joinpath(Pkg.depots()[1], \"config/RemoteHPC\")); Pkg.add(\"RemoteHPC\");Pkg.build(\"RemoteHPC\")")
     @assert res.exitcode == 0 "Something went wrong installing RemoteHPC on server, please install manually"
 
     s.julia_exec = julia_exec
@@ -236,8 +236,12 @@ function update_RemoteHPC(s::Server)
         kill(s)
     end
     @info "Updating RemoteHPC"
-    res = server_command(s, "$(s.julia_exec) --project=$(depot_path(s))/config/RemoteHPC/ -e 'using Pkg; Pkg.update(\"RemoteHPC\")'")
-    @assert res.exitcode == 0 "Something went wrong updating RemoteHPC."
+    res = julia_cmd(s, "using Pkg; Pkg.activate(joinpath(Pkg.depots()[1], \"config/RemoteHPC\"));  Pkg.update(\"RemoteHPC\")")
+    if res.exitcode != 0
+        @error "stdout: $(res.stdout)", "stderr: $(res.stderr)", "exitcode: $(res.exitcode)"
+    else
+        @info "Updated RemoteHPC succesfully"
+    end
     if alive
         @info "Restarting server."
         start(s)
@@ -336,7 +340,11 @@ function depot_path(s::Server)
 end
 
 function julia_cmd(s::Server, cmd::String)
-    return server_command(s, "$(s.julia_exec) --startup-file=no -e $cmd")
+    if islocal(s)
+        return server_command(s, "$(s.julia_exec) --startup-file=no -e $cmd")
+    else
+        return server_command(s, "$(s.julia_exec) --startup-file=no -e '$cmd'")
+    end
 end
 
 ssh_string(s::Server) = s.username * "@" * s.domain
@@ -384,7 +392,7 @@ function construct_tunnel(s, remote_port)
     else
         port, serv = listenany(Sockets.localhost, 0)
         close(serv)
-        run(Cmd(`ssh -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -N -f -L $port:localhost:$remote_port $(ssh_string(s))`); wait=false)
+        run(Cmd(`ssh -o ServerAliveInterval=60 -N -f -L $port:localhost:$remote_port $(ssh_string(s))`); wait=false)
         return port
     end 
 end
@@ -461,14 +469,22 @@ function server_command(username, domain, cmd::String)
     out = Pipe()
     err = Pipe()
     if domain == "localhost"
-        process = run(pipeline(ignorestatus(Cmd(string.(split(cmd)))); stdout = out,
+        e = Cmd(string.(split(cmd)))
+        process = run(pipeline(e; stdout = out,
                                stderr = err))
     else
-        OpenSSH_jll.ssh() do ssh_exec
-            process = run(pipeline(ignorestatus(Cmd(["$ssh_exec", "$(username * "@" * domain)",
+        if Sys.which("ssh") === nothing
+            OpenSSH_jll.ssh() do ssh_exec
+                process = run(pipeline(ignorestatus(Cmd(["$ssh_exec", "$(username * "@" * domain)",
+                                                         string.(split(cmd))...])); stdout = out,
+                                       stderr = err))
+            end
+        else
+            process = run(pipeline(ignorestatus(Cmd(["ssh", "$(username * "@" * domain)",
                                                      string.(split(cmd))...])); stdout = out,
                                    stderr = err))
         end
+            
     end
     close(out.in)
     close(err.in)
