@@ -175,7 +175,7 @@ function Server(s::String)
     end
     @info "Trying to pull existing configuration from $username@$domain..."
 
-    server = load_config(username, domain)
+    server = load_config(s)
     if server !== nothing
         server.name = name
         server.domain = domain
@@ -236,11 +236,18 @@ function update_RemoteHPC(s::Server)
         kill(s)
     end
     @info "Updating RemoteHPC"
-    res = julia_cmd(s, "using Pkg; Pkg.activate(joinpath(Pkg.depots()[1], \"config/RemoteHPC\"));  Pkg.update(\"RemoteHPC\")")
-    if res.exitcode != 0
-        @error "stdout: $(res.stdout)", "stderr: $(res.stderr)", "exitcode: $(res.exitcode)"
+    if islocal(s)
+        curproj = Pkg.project().path
+        Pkg.activate(joinpath(depot_path(s), "config/RemoteHPC"))
+        Pkg.update()
+        Pkg.activate(curproj)
     else
-        @info "Updated RemoteHPC succesfully"
+        res = julia_cmd(s, "using Pkg; Pkg.activate(joinpath(Pkg.depots()[1], \"config/RemoteHPC\"));  Pkg.update(\"RemoteHPC\")")
+        if res.exitcode != 0
+            @error "stdout: $(res.stdout)", "stderr: $(res.stderr)", "exitcode: $(res.exitcode)"
+        else
+            @info "Updated RemoteHPC succesfully"
+        end
     end
     if alive
         @info "Restarting server."
@@ -331,20 +338,20 @@ end
 Base.gethostname(s::Server) = gethostname(s.username, s.domain)
 
 function depot_path(s::Server)
-    t = julia_cmd(s, "print(Base.DEPOT_PATH[1])").stdout
-    if occursin("cache", t)
-        return julia_cmd(s, "print(Base.DEPOT_PATH[2])").stdout
+    if islocal(s)
+        occursin("cache", Pkg.depots()[1]) ? Pkg.depots()[2] : Pkg.depots()[1]
     else
-        return t
+        t = julia_cmd(s, "print(Base.DEPOT_PATH[1])").stdout
+        if occursin("cache", t)
+            return julia_cmd(s, "print(Base.DEPOT_PATH[2])").stdout
+        else
+            return t
+        end
     end
 end
 
 function julia_cmd(s::Server, cmd::String)
-    if islocal(s)
-        return server_command(s, "$(s.julia_exec) --startup-file=no -e $cmd")
-    else
-        return server_command(s, "$(s.julia_exec) --startup-file=no -e '$cmd'")
-    end
+    return server_command(s, "$(s.julia_exec) --startup-file=no -e '$cmd'")
 end
 
 ssh_string(s::Server) = s.username * "@" * s.domain
@@ -386,13 +393,14 @@ function construct_tunnel(s, remote_port)
         OpenSSH_jll.ssh() do ssh_exec
             port, serv = listenany(Sockets.localhost, 0)
             close(serv)
-            run(Cmd(`$ssh_exec -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -N -f -L $port:localhost:$remote_port $(ssh_string(s))`); wait=false)
+            run(Cmd(`$ssh_exec -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -N -L $port:localhost:$remote_port $(ssh_string(s))`); wait=false)
             return port
         end
     else
         port, serv = listenany(Sockets.localhost, 0)
         close(serv)
-        run(Cmd(`ssh -o ServerAliveInterval=60 -N -f -L $port:localhost:$remote_port $(ssh_string(s))`); wait=false)
+        cmd = Cmd(`ssh -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 -N -L $port:localhost:$remote_port $(ssh_string(s))`)
+        run(cmd; wait=false)
         return port
     end 
 end

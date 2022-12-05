@@ -270,7 +270,7 @@ function check_connections!(connections)
             if t === nothing
                 # Tunnel was dead -> create one and try again
                 try
-                    remote_server = load_config(s.username, s.domain)
+                    remote_server = load_config(s)
                     remote_server === nothing && return false
                     s.port = construct_tunnel(s, remote_server.port)
                     sleep(2)

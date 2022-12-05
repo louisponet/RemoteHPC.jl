@@ -11,6 +11,7 @@ using Dates
 using ProgressMeter
 using SnoopPrecompile
 using Base: @kwdef
+using Pkg
 
 const CONFIG_DIR = occursin("cache", first(Base.DEPOT_PATH)) ?
                    abspath(Base.DEPOT_PATH[2], "config", "RemoteHPC") :
@@ -58,12 +59,11 @@ const LOCAL_SERVER = Ref{Server}()
 function __init__()
     s = local_server()
     LOCAL_SERVER[] = s
-    # if isinteractive() && !isalive(local_server())
-    #     @info "Local server isn't running, starting it"
-    #     start(s)
-    # end
+    if isinteractive() && !isalive(local_server())
+        @info "Local server isn't running, starting it"
+        start(s)
+    end
 end
-
 
 using TOML
 

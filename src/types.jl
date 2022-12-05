@@ -72,5 +72,4 @@ end
 Environment(name::String; kwargs...) = Environment(; name = name, kwargs...)
 Base.:(==)(e1::Environment, e2::Environment) = e1.name == e2.name
 storage_directory(::Environment) = "environments"
-
 StructTypes.StructType(::Environment) = StructTypes.Mutable()
