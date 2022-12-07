@@ -12,6 +12,7 @@ using ProgressMeter
 using SnoopPrecompile
 using Base: @kwdef
 using Pkg
+using InteractiveUtils
 
 const CONFIG_DIR = occursin("cache", first(Base.DEPOT_PATH)) ?
                    abspath(Base.DEPOT_PATH[2], "config", "RemoteHPC") :
@@ -51,7 +52,7 @@ include("io.jl")
     rm(e)
 end
 
-export Server, start, restart, local_server, isalive, load, save, submit, abort, state
+export Server, start, restart, local_server, isalive, load, save, submit, abort, state, configure
 export Calculation, Environment, Exec, HQ, Slurm, Bash
 
 const LOCAL_SERVER = Ref{Server}()

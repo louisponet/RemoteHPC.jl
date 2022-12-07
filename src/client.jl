@@ -11,7 +11,7 @@ function start(s::Server)
     conf_path = config_path(s)
     t = server_command(s, "ls $(conf_path)")
     if t.exitcode != 0
-        error("RemoteHPC not installed on server. Install it using `RemoteHPC.install_remoteHPC(server)`")
+        error("RemoteHPC not installed on server. Install it using `RemoteHPC.install_RemoteHPC(Server($(s.name)))`")
     end
     
     if islocal(s)
@@ -52,8 +52,12 @@ function start(s::Server)
     if s.domain != "localhost"
         julia_cmd = replace("""$(s.julia_exec) --project=$(conf_path) --startup-file=no -t 10 -e "using RemoteHPC; RemoteHPC.julia_main()" &> $p""",
                             "'" => "")
-        OpenSSH_jll.ssh() do ssh_exec
-            run(Cmd(`$ssh_exec -f $(ssh_string(s)) $julia_cmd`; detach = true))
+        if Sys.which("ssh") === nothing
+            OpenSSH_jll.ssh() do ssh_exec
+                run(Cmd(`$ssh_exec -f $(ssh_string(s)) $julia_cmd`; detach = true))
+            end
+        else
+            run(Cmd(`ssh -f $(ssh_string(s)) $julia_cmd`; detach = true))
         end
     else
         e = s.julia_exec * " --project=$(conf_path)"
@@ -70,6 +74,7 @@ function start(s::Server)
         retries += 1
         sleep(1)
     end
+    finish!(prog)
 
     if retries == 60
         error("Something went wrong starting the server.")
@@ -186,4 +191,59 @@ function state(s::Server, dir::AbstractString)
     url = URI(path = "/job/", query = Dict("path" => adir, "data" => ["state"]))
     resp = HTTP.get(s, url)
     return JSON3.read(resp.body, Tuple{JobState})[1]
+end
+
+ask_name(::Type{S}) where {S} = ask_input(String, "Please specify a name for the new $S")
+
+function configure()
+    @info "Configuring..."
+    done = false
+    while !done
+        storables = subtypes(Storable)
+        type = request("Which kind would you like to configure?", RadioMenu(string.(storables)))
+        type == -1 && return
+        
+        storable_T = storables[type]
+        name = ask_name(storable_T)
+        if storable_T == Server
+            server = local_server()
+        else
+            servers = ["local"; load(local_server(), Server(""))]
+            server_id = request("Where would you like to save the $storable_T?", RadioMenu(servers))
+            server_id == -1 && return
+            if server_id == 1
+                server = local_server()
+            else
+                server = Server(servers[server_id])
+            end
+        end
+        if !isalive(server)
+            error("Server $(server.name) is not alive, start it first")
+        end
+        storable = storable_T(name=name)
+        if isalive(server) && exists(server, storable)
+            id = request("A $storable_T with name $name already exists on $(server.name). Overwrite?", RadioMenu(["no", "yes"]))
+            id < 2 && return
+            storable = load(server, storable)
+        end
+
+        if storable_T == Server
+            return Server(name; overwrite = true)
+        end
+        @info "Please fill out the rest of the fields (for default leave empty):"
+        for f in configurable_fieldnames(storable_T)
+            f == :name && continue
+            
+            field = getfield(storable, f)
+            T = typeof(field)
+            setfield!(storable, f, ask_input(T, "$f", field))
+        end
+        yn_id = request("Proceed saving $storable_T with name $name to Server $(server.name)", RadioMenu(["yes", "no"]))
+        if yn_id == 1
+            save(server, storable)
+        end
+
+        yn_id = request("Configure more Storables?", RadioMenu(["yes", "no"]))
+        done = yn_id == 2
+    end
 end

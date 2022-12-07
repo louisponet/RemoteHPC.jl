@@ -258,6 +258,7 @@ end
 
 function check_connections!(connections)
     for n in keys(connections)
+        !exists(Server(name=n)) && continue
         s = load(Server(n))
         if s.domain == "localhost"
             continue
@@ -343,10 +344,13 @@ function julia_main()::Cint
     connections_task = @tspawnat min(Threads.nthreads(), 3) with_logger(logger)  do
         while !should_stop[]
             try
-                for n in load(Server(""))
-                    if !haskey(connections, n)
-                        connections[n] = false
-                    end
+                all_servers = load(Server(""))
+                for k in filter(x-> !(x in all_servers), keys(connections))
+                    delete!(connections, k)
+                end
+                for n in all_servers
+                    n == s.name && continue
+                    connections[n] = get(connections, n, false)
                 end
                 check_connections!(connections)
             catch e

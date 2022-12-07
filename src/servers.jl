@@ -75,19 +75,29 @@ end
 
 function configure!(s::Server; interactive = true)
     if s.domain == "localhost"
-        julia = joinpath(Sys.BINDIR, "julia")
+        s.julia_exec = joinpath(Sys.BINDIR, "julia")
     else
         if interactive
             julia = ask_input(String, "Julia Exec", s.julia_exec)
             if server_command(s.username, s.domain, "which $julia").exitcode != 0
-                @warn "$julia, no such file or directory. Remember to install julia on the server either manually or using `RemoteHPC.install_RemoteHPC(s)`."
+                yn_id = request("$julia, no such file or directory. Install julia?", RadioMenu(["yes", "no"]))
+                yn_id == -1 && return 
+                if yn_id == 1
+                    s.julia_exec = install_julia(s)
+                    install_RemoteHPC(s)
+                else
+                    @info """
+                    You will need to install julia, e.g. by using `RemoteHPC.install_julia` or manually on the cluster.
+                    Afterwards don't forget to update server.julia_exec to the correct one before starting the server.
+                    """
+                end
+            else
+                s.julia_exec = julia
             end
-            julia = julia
         else
-            julia = "julia"
+            s.julia_exec = "julia"
         end
     end
-    s.julia_exec = julia
 
     # Try auto configuring the scheduler
     scheduler = configure_scheduler(s; interactive = interactive)
@@ -148,10 +158,10 @@ function configure_local(; interactive = true)
     return s
 end
 
-function Server(s::String)
+function Server(s::String; overwrite=false)
     isempty(s) && return Server(name="")
     t = Server(; name = s)
-    if exists(t)
+    if exists(t) && !overwrite
         return load(t)
     elseif s == gethostname()
         return configure_local(interactive=false)
@@ -173,9 +183,13 @@ function Server(s::String)
         domain = ask_input(String, "Domain")
         name = s
     end
+    
+    if server_command(username, domain, "ls").exitcode != 0
+        error("$username@$domain not reachable")
+    end
+    server = Server(name=name, username=username, domain=domain)
     @info "Trying to pull existing configuration from $username@$domain..."
-
-    server = load_config(s)
+    server = load_config(username, domain, config_path(server))
     if server !== nothing
         server.name = name
         server.domain = domain
@@ -200,31 +214,39 @@ StructTypes.StructType(::Type{Server}) = StructTypes.Mutable()
 islocal(s::Server) = s.domain == "localhost"
 local_server() = Server(gethostname())
 
+function install_julia(s::Server)
+    julia_tar = "julia-$VERSION-linux-x86_64.tar.gz"
+    p = ProgressUnknown("Installing julia on Server $(s.name) ($(s.username)@$(s.domain))...")
+    t = tempname()
+    mkdir(t)
+    next!(p, showvalues = [("step [1/3]", "downloading")])
+    download("https://julialang-s3.julialang.org/bin/linux/x64/1.8/$julia_tar",
+             joinpath(t, "julia.tar.gz"))
+    next!(p, showvalues = [("step [2/3]", "pushing")])
+    push(joinpath(t, "julia.tar.gz"), s, julia_tar)
+    rm(t; recursive = true)
+    next!(p, showvalues = [("step [3/3]", "unpacking")])
+    res = server_command(s, "tar -xf $julia_tar")
+    server_command(s, "rm $julia_tar")
+    finish!(p)
+    @assert res.exitcode == 0 "Issue unpacking julia executable on cluster, please install julia manually"
+    @info "julia installed on Server $(s.name) in ~/julia-$VERSION/bin"
+    return "~/julia-$VERSION/bin/julia"
+end
+
 function install_RemoteHPC(s::Server, julia_exec = s.julia_exec)
     # We install the latest version of julia in the homedir
-    if julia_exec === nothing
-        res = server_command(s, "which julia")
-        if res.exitcode != 0
-            @info "No julia found in PATH, installing it..."
-            t = tempname()
-            mkdir(t)
-            download("https://julialang-s3.julialang.org/bin/linux/x64/1.8/julia-1.8.2-linux-x86_64.tar.gz",
-                     joinpath(t, "julia.tar.gz"))
-            push(joinpath(t, "julia.tar.gz"), s, "julia-1.8.2-linux-x86_64.tar.gz")
-            rm(t; recursive = true)
-            res = server_command(s, "tar -xf julia-1.8.2-linux-x86_64.tar.gz")
-            @assert res.exitcode == 0 "Issue unpacking julia executable on cluster, please install julia manually"
-            julia_exec = "~/julia-1.8.2/bin/julia"
-            @info "julia installed in ~/julia-1.8.2/bin"
-        else
-            julia_exec = res.stdout[1:end-1]
-        end
+    res = server_command(s, "which $julia_exec")
+    if res.exitcode != 0
+        julia_exec = install_julia(s) 
+    else
+        julia_exec = res.stdout[1:end-1]
     end
     @info "Installing RemoteHPC"
+    s.julia_exec = julia_exec
     res = julia_cmd(s, "using Pkg; Pkg.activate(joinpath(Pkg.depots()[1], \"config/RemoteHPC\")); Pkg.add(\"RemoteHPC\");Pkg.build(\"RemoteHPC\")")
     @assert res.exitcode == 0 "Something went wrong installing RemoteHPC on server, please install manually"
 
-    s.julia_exec = julia_exec
     @info "RemoteHPC installed on remote cluster, try starting the server with `start(server)`."
     return
 end
@@ -351,7 +373,7 @@ function depot_path(s::Server)
 end
 
 function julia_cmd(s::Server, cmd::String)
-    return server_command(s, "$(s.julia_exec) --startup-file=no -e '$cmd'")
+    return server_command(s, "$(s.julia_exec) --startup-file=no -e ' $cmd '")
 end
 
 ssh_string(s::Server) = s.username * "@" * s.domain
@@ -406,6 +428,7 @@ function construct_tunnel(s, remote_port)
 end
 
 function ask_input(::Type{T}, message, default = nothing) where {T}
+    message *= " [$T]"
     if default === nothing
         t = ""
         print(message * ": ")
@@ -413,16 +436,26 @@ function ask_input(::Type{T}, message, default = nothing) where {T}
             t = readline()
         end
     else
-        print(message * " (default: $default): ")
+        if !(T == String && isempty(default))
+            message *= " (default: $default)"
+        end
+        print(message * ": ")
         t = readline()
         if isempty(t)
             return default
         end
     end
-    if T != String
+    if T in (Int, Float64, Float32) 
         return parse(T, t)
-    else
+    elseif T == String
         return t
+    else
+        out = T(eval(Meta.parse(t)))
+        if out isa T
+            return out
+        else
+            error("Can't parse $t as $T")
+        end
     end
 end
 
@@ -477,7 +510,7 @@ function server_command(username, domain, cmd::String)
     out = Pipe()
     err = Pipe()
     if domain == "localhost"
-        e = Cmd(string.(split(cmd)))
+        e = ignorestatus(Cmd(string.(split(cmd))))
         process = run(pipeline(e; stdout = out,
                                stderr = err))
     else

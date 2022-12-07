@@ -1,5 +1,7 @@
 abstract type Storable end
 
+(::Type{S})(s::S) where {S<:Storable} = s
+
 function storage_name(s::S) where {S<:Storable}
     return hasfield(S, :name) ? s.name : error("Please define a name function for type $S.")
 end
@@ -12,6 +14,8 @@ function storage_path(s::S) where {S<:Storable}
 end
 storage_uri(s::Storable) = URI(path="/storage/", query = Dict("path" => storage_path(s)))
 verify(s::Storable) = nothing
+
+configurable_fieldnames(::Type{S}) where {S<:Storable} = fieldnames(S)
 
 # These are the standard functions where things are saved as simple jsons in the
 # config_path.
