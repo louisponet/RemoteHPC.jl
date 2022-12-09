@@ -196,7 +196,7 @@ end
 ask_name(::Type{S}) where {S} = ask_input(String, "Please specify a name for the new $S")
 
 function configure()
-    @info "Configuring..."
+    @info "Configuring (start with Servers)..."
     done = false
     while !done
         storables = subtypes(Storable)
@@ -230,14 +230,7 @@ function configure()
         if storable_T == Server
             return Server(name; overwrite = true)
         end
-        @info "Please fill out the rest of the fields (for default leave empty):"
-        for f in configurable_fieldnames(storable_T)
-            f == :name && continue
-            
-            field = getfield(storable, f)
-            T = typeof(field)
-            setfield!(storable, f, ask_input(T, "$f", field))
-        end
+        storable = configure!(storable, server)
         yn_id = request("Proceed saving $storable_T with name $name to Server $(server.name)", RadioMenu(["yes", "no"]))
         if yn_id == 1
             save(server, storable)
@@ -246,4 +239,16 @@ function configure()
         yn_id = request("Configure more Storables?", RadioMenu(["yes", "no"]))
         done = yn_id == 2
     end
+end
+
+function configure!(storable::T, ::Server) where {T<:Storable}
+    @info "Please fill out the rest of the fields (for default leave empty):"
+    for f in configurable_fieldnames(T)
+        f == :name && continue
+        
+        field = getfield(storable, f)
+        fT = typeof(field)
+        setfield!(storable, f, ask_input(fT, "$f", field))
+    end
+    return storable
 end

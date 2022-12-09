@@ -448,7 +448,7 @@ function ask_input(::Type{T}, message, default = nothing) where {T}
     if T in (Int, Float64, Float32) 
         return parse(T, t)
     elseif T == String
-        return t
+        return strip(t)
     else
         out = T(eval(Meta.parse(t)))
         if out isa T
@@ -581,7 +581,7 @@ for f in (:get, :put, :post, :head, :patch)
     end
 end
 
-function Base.readdir(s::Server, dir::String)
+function Base.readdir(s::Server, dir::AbstractString)
     resp = HTTP.get(s, URI(path="/readdir/", query=Dict("path" => abspath(s, dir))))
     return JSON3.read(resp.body, Vector{String})
 end
