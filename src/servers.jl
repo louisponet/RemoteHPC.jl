@@ -78,7 +78,7 @@ function configure!(s::Server; interactive = true)
         s.julia_exec = joinpath(Sys.BINDIR, "julia")
     else
         if interactive
-            julia = ask_input(String, "Julia Exec", s.julia_exec)
+            julia = ask_input(String, "Julia executable path", s.julia_exec)
             if server_command(s.username, s.domain, "which $julia").exitcode != 0
                 yn_id = request("$julia, no such file or directory. Install julia?", RadioMenu(["yes", "no"]))
                 yn_id == -1 && return 
@@ -119,7 +119,7 @@ function configure!(s::Server; interactive = true)
                         @warn "Couldn't create $dir, try a different one."
                     end
                 else
-                    dir = ask_input(String, "Default Jobs directory")
+                    dir = ask_input(String, "Default jobs directory")
                 end
             end
         end
@@ -129,7 +129,11 @@ function configure!(s::Server; interactive = true)
     else
         s.jobdir = hdir
     end
-
+    conf_path = config_path(s)
+    t = server_command(s, "ls $(conf_path)")
+    if t.exitcode != 0
+        install_RemoteHPC(s)
+    end
     s.uuid = string(uuid4())
     return s
 end
@@ -448,7 +452,7 @@ function ask_input(::Type{T}, message, default = nothing) where {T}
     if T in (Int, Float64, Float32) 
         return parse(T, t)
     elseif T == String
-        return strip(t)
+        return String(strip(t))
     else
         out = T(eval(Meta.parse(t)))
         if out isa T

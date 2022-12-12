@@ -11,7 +11,7 @@ function start(s::Server)
     conf_path = config_path(s)
     t = server_command(s, "ls $(conf_path)")
     if t.exitcode != 0
-        error("RemoteHPC not installed on server. Install it using `RemoteHPC.install_RemoteHPC(Server($(s.name)))`")
+        error("RemoteHPC not installed on server. Install it using `RemoteHPC.install_RemoteHPC(Server(\"$(s.name)\"))`")
     end
     
     if islocal(s)
@@ -218,7 +218,7 @@ function configure()
             end
         end
         if !isalive(server)
-            error("Server $(server.name) is not alive, start it first")
+            error("Server(\"$(server.name)\") is not alive, start it first")
         end
         storable = storable_T(name=name)
         if isalive(server) && exists(server, storable)
@@ -228,9 +228,10 @@ function configure()
         end
 
         if storable_T == Server
-            return Server(name; overwrite = true)
+            storable = Server(name; overwrite = true)
+        else
+            storable = configure!(storable, server)
         end
-        storable = configure!(storable, server)
         yn_id = request("Proceed saving $storable_T with name $name to Server $(server.name)", RadioMenu(["yes", "no"]))
         if yn_id == 1
             save(server, storable)
