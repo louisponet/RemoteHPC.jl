@@ -158,7 +158,7 @@ function configure_local(; interactive = true)
     return s
 end
 
-function Server(s::String; overwrite=false)
+function Server(s::AbstractString; overwrite=false)
     isempty(s) && return Server(name="")
     t = Server(; name = s)
     if exists(t) && !overwrite
