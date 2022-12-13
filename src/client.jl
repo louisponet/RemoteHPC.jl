@@ -202,8 +202,9 @@ function configure()
         storables = subtypes(Storable)
         type = request("Which kind would you like to configure?", RadioMenu(string.(storables)))
         type == -1 && return
-        
         storable_T = storables[type]
+        @info "Configuring a $storable_T. Please read carefully the documentation first:"
+        display(Docs.doc(storable_T)) 
         name = ask_name(storable_T)
         if storable_T == Server
             server = local_server()
@@ -221,6 +222,7 @@ function configure()
             error("Server(\"$(server.name)\") is not alive, start it first")
         end
         storable = storable_T(name=name)
+
         if isalive(server) && exists(server, storable)
             id = request("A $storable_T with name $name already exists on $(server.name). Overwrite?", RadioMenu(["no", "yes"]))
             id < 2 && return
@@ -242,14 +244,45 @@ function configure()
     end
 end
 
-function configure!(storable::T, ::Server) where {T<:Storable}
-    @info "Please fill out the rest of the fields (for default leave empty):"
-    for f in configurable_fieldnames(T)
-        f == :name && continue
-        
-        field = getfield(storable, f)
-        fT = typeof(field)
-        setfield!(storable, f, ask_input(fT, "$f", field))
+function configure!(storable::T, s::Server) where {T<:Storable}
+    tf = tempname()
+    open(tf, "w") do f
+        write(f, "Storable configuration (read documentation below):\n\n")
+        for field in configurable_fieldnames(T)
+            value = getfield(storable, field)
+            ft = typeof(value)
+            write(f, "$field::$ft = $(repr(value))\n")
+        end
+        write(f, "########## DOCUMENTATION #########\n")
+        write(f, string(Docs.doc(T)))
+        write(f, "\n")
+        write(f, "########## DOCUMENTATION END #####\n\n\n")
     end
+    InteractiveUtils.edit(tf)
+    tstr = filter(!isempty, readlines(tf))
+    i = findfirst(x->occursin("Storable configuration",x), tstr)
+    for (ii, f) in enumerate(configurable_fieldnames(T))
+        field = getfield(storable, f)
+        ft = typeof(field)
+        line = tstr[i+ii]
+        sline = split(line, "=")
+        # try
+            if length(sline) > 2
+                v = Main.eval(Meta.parse(join(sline[2:end], "=")))
+            else
+                v = Main.eval(Meta.parse(sline[end]))
+            end
+                
+            setfield!(storable, f, v)
+        # catch e
+        #     @warn "Failed parsing $(split(tstr[i+ii], "=")[end]) as $ft. Try again"
+        #     @error stacktrace(catch_backtrace())
+        #     print("Press any key to continue...\n")
+        #     readline()
+        #     configure!(storable, s)
+        # end
+    end
+        
+    rm(tf)
     return storable
 end

@@ -56,7 +56,7 @@ for sched in scheds
             @test st.scheduler == sched
         end
         @testset "database" begin
-            exec = RemoteHPC.Exec("test", "cat", "",
+            exec = RemoteHPC.Exec("test", "cat",
                                   Dict("f" => 3, "test" => [1, 2, 3],
                                        "test2" => "stringtest", "-nk" => 10),
                                   ["intel", "intel-mkl"], true)
@@ -65,13 +65,13 @@ for sched in scheds
             for f in fieldnames(Exec)
                 @test getfield(te, f) == getfield(exec, f)
             end
-            exec = RemoteHPC.Exec("test", "cat", "", Dict(), [], false)
+            exec = RemoteHPC.Exec("test", "cat", Dict(), [], false)
             redirect_stderr(devnull) do
                 return save(s, exec)
             end
             e = Environment("test", Dict("N" => 1, "time" => "00:01:01"),
                             Dict("OMP_NUM_THREADS" => 1), "", "",
-                            RemoteHPC.Exec(; name = "srun", exec = "srun"))
+                            RemoteHPC.Exec(; name = "srun", path = "srun"))
             partition = get(ENV, "SLURM_PARTITION", nothing)
             account = get(ENV, "SLURM_ACCOUNT", nothing)
             if partition !== nothing
@@ -89,7 +89,7 @@ for sched in scheds
 
             es = load(s, Exec("ca"))
             @test length(es) == 1
-            es = load(s, Exec(; dir = ""))
+            es = load(s, Exec(; path = ""))
             @test length(es) == 1
         end
         @testset "job" begin
@@ -120,7 +120,7 @@ for sched in scheds
                 @test read(joinpath(t_jobdir, "scf.out"), String) == "test input"
                 @test read(joinpath(t_jobdir, "nscf.out"), String) == "test input2"
                 exec = load(s, Exec("test"))
-                sleep_e = Exec(; name = "sleep", exec = "sleep", parallel = false)
+                sleep_e = Exec(; name = "sleep", path = "sleep", parallel = false)
                 c = [Calculation(exec, "< scf.in > scf.out", true),
                      Calculation(exec, "< nscf.in > nscf.out", true),
                      Calculation(sleep_e, "10", true)]

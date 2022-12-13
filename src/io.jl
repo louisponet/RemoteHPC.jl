@@ -32,8 +32,7 @@ function flagstring(f, v)
 end
 
 function Base.write(io::IO, e::Exec)
-    direxec = joinpath(e.dir, e.exec)
-    write(io, "$direxec ")
+    write(io, "$(e.path) ")
     for (f, v) in e.flags
         write(io, flagstring(f, v))
     end

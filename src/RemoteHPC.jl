@@ -40,7 +40,7 @@ include("io.jl")
     s = local_server()
     t = "asdfe"
     t2 = "edfasdf"
-    e = Exec(; name = t2, exec = "srun")
+    e = Exec(; name = t2, path = "srun")
     e1 = Environment(t, Dict("-N" => 3, "partition" => "default", "time" => "00:01:01"),
                      Dict("OMP_NUM_THREADS" => 1), "", "", e)
     save(e1)
@@ -54,6 +54,7 @@ end
 
 export Server, start, restart, local_server, isalive, load, save, submit, abort, state, configure
 export Calculation, Environment, Exec, HQ, Slurm, Bash
+export exec
 
 const LOCAL_SERVER = Ref{Server}()
 
