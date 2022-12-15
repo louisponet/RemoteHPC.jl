@@ -1,5 +1,13 @@
 using Test
 using RemoteHPC
+using RemoteHPC.BinaryTraits
+
+@testset "Storable interface" begin
+    @test @check(Exec).result
+    @test @check(Server).result
+    @test @check(Environment).result
+end
+
 tconfdir = tempname()
 # tconfdir = "/tmp/remotehpc"
 if ispath(tconfdir)

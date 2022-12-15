@@ -1,21 +1,37 @@
-abstract type Storable end
+# Storable interface
+@trait Storable prefix Is, IsNot
 
+@implement Is{Storable} by storage_directory(_)
+
+
+StructTypes.StructType(::Type{Storable}) = StructTypes.DictType()
+
+# Constructors
+(::Type{S})(d::Dict) where {S<:Storable} = S(; d...)
+(::Type{S})(str::AbstractString; kwargs...) where {S<:Storable} = S(;name=str, kwargs...)
 (::Type{S})(s::S) where {S<:Storable} = s
 
+# Directory structure
 function storage_name(s::S) where {S<:Storable}
     return hasfield(S, :name) ? s.name : error("Please define a name function for type $S.")
-end
-function storage_directory(s::S) where {S<:Storable}
-    return error("Please define a storage_directory function for type $S.")
 end
 
 function storage_path(s::S) where {S<:Storable}
     return joinpath(storage_directory(s), storage_name(s))
 end
 storage_uri(s::Storable) = URI(path="/storage/", query = Dict("path" => storage_path(s)))
+
+# Verification before storing
 verify(s::Storable) = nothing
 
+# used in configure()
 configurable_fieldnames(::Type{S}) where {S<:Storable} = fieldnames(S)
+
+# Base extensions
+Base.:(==)(s1::S, s2::S) where {S<:Storable} = s1.name == s2.name
+Base.keys(::S) where {S<:Storable} = fieldnames(S)
+Base.getindex(e::S, i::Symbol) where {S<:Storable} = getproperty(e, i)
+Base.setindex!(e::S, i::Symbol, v) where {S<:Storable} = setproperty!(e, i)
 
 # These are the standard functions where things are saved as simple jsons in the
 # config_path.

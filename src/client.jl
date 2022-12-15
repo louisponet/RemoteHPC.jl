@@ -4,6 +4,13 @@
 Launches the daemon process on  the host [`Server`](@ref) `s`.
 """
 function start(s::Server)
+    if !islocal(s) && !isalive(LOCAL_SERVER[])
+        @warn "Local server not running. Starting that first."
+        start(LOCAL_SERVER[])
+        if !isalive(LOCAL_SERVER[])
+            error("Couldn't start local server.")
+        end
+    end
     alive = isalive(s)
     @assert !alive "Server is already up and running."
     @info "Starting:\n$s"
@@ -135,6 +142,9 @@ function isalive(s::Server)
             return false
         end
     else
+        if !isalive(LOCAL_SERVER[])
+            error("Local server not running. Use `start(local_server())` first.")
+        end
         return JSON3.read(HTTP.get(LOCAL_SERVER[], URI(path="/isalive/$(s.name)"); connect_timeout = 2, retries = 2).body, Bool)
     end
 end
@@ -230,7 +240,7 @@ function configure()
         end
 
         if storable_T == Server
-            storable = Server(name; overwrite = true)
+            storable = Server(name, true)
         else
             storable = configure!(storable, server)
         end
@@ -241,6 +251,38 @@ function configure()
 
         yn_id = request("Configure more Storables?", RadioMenu(["yes", "no"]))
         done = yn_id == 2
+    end
+end
+
+function ask_input(::Type{T}, message, default = nothing) where {T}
+    message *= " [$T]"
+    if default === nothing
+        t = ""
+        print(message * ": ")
+        while isempty(t)
+            t = readline()
+        end
+    else
+        if !(T == String && isempty(default))
+            message *= " (default: $default)"
+        end
+        print(message * ": ")
+        t = readline()
+        if isempty(t)
+            return default
+        end
+    end
+    if T in (Int, Float64, Float32) 
+        return parse(T, t)
+    elseif T == String
+        return String(strip(t))
+    else
+        out = T(eval(Meta.parse(t)))
+        if out isa T
+            return out
+        else
+            error("Can't parse $t as $T")
+        end
     end
 end
 

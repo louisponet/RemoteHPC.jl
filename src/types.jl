@@ -51,10 +51,7 @@ Exec(path="foo", parallel=true)
     modules::Vector{String} = String[]
     parallel::Bool = true
 end
-Exec(str::String; kwargs...) = Exec(; name = str, kwargs...)
-Base.:(==)(e1::Exec, e2::Exec) = e1.name == e2.name
-storage_directory(::Exec) = "execs"
-StructTypes.StructType(::Type{Exec}) = StructTypes.DictType()
+
 function Exec(d::Dict)
     if haskey(d, :dir)
         Base.depwarn("Constructor with separate `dir` and `exec` will be deprecated. Use one `path` instead.", :Exec)
@@ -63,22 +60,6 @@ function Exec(d::Dict)
         return Exec(d[:name], d[:path], d[:flags], d[:modules], d[:parallel])
     end
 end
-        
-StructTypes.names(::Type{Exec}) = ((:path, :dir), (:path, :exec))
-StructTypes.construct(v::Vector{Any}, ::Type{Exec}) = @show v
-StructTypes.constructfrom(::Type{Exec}, obj) = @show obj
-
-Base.keys(::Exec) = fieldnames(Exec)
-Base.getindex(e::Exec, i::Symbol) = getproperty(e, i)
-Base.setindex!(e::Exec, i::Symbol, v) = setproperty!(e, i)
-
-Base.iterate(e::Exec, state=Val{:name}()) = (e.name, Val{:path}())
-Base.iterate(e::Exec, ::Val{:path}) = (e.path, Val{:flags}())
-Base.iterate(e::Exec, ::Val{:flags}) = (e.flags, Val{:modules}())
-Base.iterate(e::Exec, ::Val{:modules}) = (e.modules, Val{:parallel}())
-Base.iterate(e::Exec, ::Val{:parallel}) = (e.parallel, Val{:done}())
-Base.iterate(e::Exec, ::Val{:done}) = nothing
-
 
 function Exec(a,b,c,d,e,f)
     Base.depwarn("Constructor with separate `dir` and `exec` will be deprecated. Use one `path` instead.", :Exec)
@@ -139,12 +120,17 @@ function isrunnable(e::Exec)
     end
 end
 
+# Database interface
+@assign Exec with Is{Storable}
+storage_directory(::Exec) = "execs"
+
+
+
 @kwdef struct Calculation
     exec::Exec
     args::String = ""
     run::Bool = true
 end
-StructTypes.StructType(::Calculation) = StructTypes.Mutable()
 
 @kwdef mutable struct Environment <: Storable
     name::String = ""
@@ -154,7 +140,5 @@ StructTypes.StructType(::Calculation) = StructTypes.Mutable()
     postamble::String = ""
     parallel_exec::Exec = Exec()
 end
-Environment(name::String; kwargs...) = Environment(; name = name, kwargs...)
-Base.:(==)(e1::Environment, e2::Environment) = e1.name == e2.name
+@assign Environment with Is{Storable}
 storage_directory(::Environment) = "environments"
-StructTypes.StructType(::Environment) = StructTypes.Mutable()

@@ -13,6 +13,7 @@ using SnoopPrecompile
 using Base: @kwdef
 using Pkg
 using InteractiveUtils
+using BinaryTraits
 
 const CONFIG_DIR = occursin("cache", first(Base.DEPOT_PATH)) ?
                    abspath(Base.DEPOT_PATH[2], "config", "RemoteHPC") :
@@ -43,6 +44,7 @@ include("io.jl")
     e = Exec(; name = t2, path = "srun")
     e1 = Environment(t, Dict("-N" => 3, "partition" => "default", "time" => "00:01:01"),
                      Dict("OMP_NUM_THREADS" => 1), "", "", e)
+
     save(e1)
     save(e)
     e1 = load(e1)
@@ -59,12 +61,8 @@ export exec
 const LOCAL_SERVER = Ref{Server}()
 
 function __init__()
-    s = local_server()
-    LOCAL_SERVER[] = s
-    if isinteractive() && !isalive(local_server())
-        @info "Local server isn't running, starting it"
-        start(s)
-    end
+    LOCAL_SERVER[] = local_server()
+    init_traits(@__MODULE__)
 end
 
 using TOML

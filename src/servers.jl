@@ -214,7 +214,6 @@ function Server(s::AbstractString; overwrite=false)
     return server
 end
 
-StructTypes.StructType(::Type{Server}) = StructTypes.Mutable()
 islocal(s::Server) = s.domain == "localhost"
 local_server() = Server(gethostname())
 
@@ -429,38 +428,6 @@ function construct_tunnel(s, remote_port)
         run(cmd; wait=false)
         return port
     end 
-end
-
-function ask_input(::Type{T}, message, default = nothing) where {T}
-    message *= " [$T]"
-    if default === nothing
-        t = ""
-        print(message * ": ")
-        while isempty(t)
-            t = readline()
-        end
-    else
-        if !(T == String && isempty(default))
-            message *= " (default: $default)"
-        end
-        print(message * ": ")
-        t = readline()
-        if isempty(t)
-            return default
-        end
-    end
-    if T in (Int, Float64, Float32) 
-        return parse(T, t)
-    elseif T == String
-        return String(strip(t))
-    else
-        out = T(eval(Meta.parse(t)))
-        if out isa T
-            return out
-        else
-            error("Can't parse $t as $T")
-        end
-    end
 end
 
 """
