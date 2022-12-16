@@ -23,6 +23,18 @@ StructTypes.StructType(::Type{Slurm}) = StructTypes.Struct()
 StructTypes.StructType(::Type{HQ}) = StructTypes.Struct()
 StructTypes.subtypekey(::Type{Scheduler}) = :type
 
+function Scheduler(d::Dict{String,Any})
+    t = d["type"]
+    if t == "bash"
+        return Bash()
+    elseif t == "slurm"
+        return Slurm()
+    else
+        return HQ(t["server_command"], d["allocs"])
+    end
+end
+Base.convert(::Type{Scheduler}, d::Dict) = Scheduler(d)
+
 function submit(::S, ::AbstractString) where {S<:Scheduler}
     return error("No submit method defined for $S.")
 end

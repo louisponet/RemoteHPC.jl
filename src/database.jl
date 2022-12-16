@@ -3,8 +3,7 @@
 
 @implement Is{Storable} by storage_directory(_)
 
-
-StructTypes.StructType(::Type{Storable}) = StructTypes.DictType()
+StructTypes.StructType(::Type{<:Storable}) = StructTypes.DictType()
 
 # Constructors
 (::Type{S})(d::Dict) where {S<:Storable} = S(; d...)
@@ -32,6 +31,23 @@ Base.:(==)(s1::S, s2::S) where {S<:Storable} = s1.name == s2.name
 Base.keys(::S) where {S<:Storable} = fieldnames(S)
 Base.getindex(e::S, i::Symbol) where {S<:Storable} = getproperty(e, i)
 Base.setindex!(e::S, i::Symbol, v) where {S<:Storable} = setproperty!(e, i)
+
+function Base.iterate(s::S, state=1) where {S}
+    fn = fieldnames(S)
+    @inbounds if state > length(fn)
+        return nothing
+    else
+        return s[fn[state]], state+1
+    end
+end
+
+function Base.convert(::Type{S}, d::Dict{String, Any}) where {S<:Storable}
+    td = Dict{Symbol, Any}()
+    for (k, v) in d
+        td[Symbol(k)] = v
+    end
+    return S(td)
+end
 
 # These are the standard functions where things are saved as simple jsons in the
 # config_path.
