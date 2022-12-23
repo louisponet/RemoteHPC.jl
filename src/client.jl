@@ -3,7 +3,7 @@
 
 Launches the daemon process on  the host [`Server`](@ref) `s`.
 """
-function start(s::Server)
+function start(s::Server; verbose=0)
     if !islocal(s) && !isalive(LOCAL_SERVER[])
         @warn "Local server not running. Starting that first."
         start(LOCAL_SERVER[])
@@ -13,7 +13,7 @@ function start(s::Server)
     end
     alive = isalive(s)
     @assert !alive "Server is already up and running."
-    @info "Starting:\n$s"
+    @debug "Starting:\n$s"
     hostname = gethostname(s)
     conf_path = config_path(s)
     t = server_command(s, "ls $(conf_path)")
@@ -55,9 +55,9 @@ function start(s::Server)
     firstime = checktime()
 
     p = "$(conf_path)/$hostname/logs/errors.log"
-    scrpt = "using RemoteHPC; RemoteHPC.julia_main()"
+    scrpt = "using RemoteHPC; RemoteHPC.julia_main(verbose=$(verbose))"
     if s.domain != "localhost"
-        julia_cmd = replace("""$(s.julia_exec) --project=$(conf_path) --startup-file=no -t 10 -e "using RemoteHPC; RemoteHPC.julia_main()" &> $p""",
+        julia_cmd = replace("""$(s.julia_exec) --project=$(conf_path) --startup-file=no -t 10 -e "using RemoteHPC; RemoteHPC.julia_main(verbose=$(verbose))" &> $p""",
                             "'" => "")
         if Sys.which("ssh") === nothing
             OpenSSH_jll.ssh() do ssh_exec
@@ -90,8 +90,8 @@ function start(s::Server)
             s.port = load_config(s).port
         end
         
-        @info "Daemon on Server $(s.name) started, listening on local port $(s.port)."
-        @info "Saving updated server info..."
+        @debug "Daemon on Server $(s.name) started, listening on local port $(s.port)."
+        @debug "Saving updated server info..."
         save(s)
     end
     while isalive(LOCAL_SERVER[]) && !isalive(s)
@@ -121,7 +121,7 @@ end
 function update_config(s::Server)
     alive = isalive(s)
     if alive
-        @info "Server is alive, killing"
+        @debug "Server is alive, killing"
         kill(s)
     end
     save(s)
@@ -190,7 +190,7 @@ function abort(s::Server, dir::AbstractString)
     resp = HTTP.post(s, URI(path="/abort/", query=Dict("path" => adir)))
     if resp.status == 200
         id = JSON3.read(resp.body, Int)
-        @info "Aborted job with id $id."
+        @debug "Aborted job with id $id."
     else
         return resp
     end
@@ -206,14 +206,14 @@ end
 ask_name(::Type{S}) where {S} = ask_input(String, "Please specify a name for the new $S")
 
 function configure()
-    @info "Configuring (start with Servers)..."
+    @debug "Configuring (start with Servers)..."
     done = false
     while !done
         storables = subtypes(Storable)
         type = request("Which kind would you like to configure?", RadioMenu(string.(storables)))
         type == -1 && return
         storable_T = storables[type]
-        @info "Configuring a $storable_T. Please read carefully the documentation first:"
+        @debug "Configuring a $storable_T. Please read carefully the documentation first:"
         display(Docs.doc(storable_T)) 
         name = ask_name(storable_T)
         if storable_T == Server

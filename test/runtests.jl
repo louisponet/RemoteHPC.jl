@@ -8,8 +8,8 @@ using RemoteHPC.BinaryTraits
     @test @check(Environment).result
 end
 
-tconfdir = tempname()
-# tconfdir = "/tmp/remotehpc"
+# tconfdir = tempname()
+tconfdir = "/tmp/remotehpc"
 if ispath(tconfdir)
     rm(tconfdir; recursive = true)
 end
@@ -18,7 +18,6 @@ config_path(p...) = joinpath(tconfdir, p...)
 
 paths = ["jobs",
          "logs/jobs",
-         "logs/runtimes",
          "storage/servers",
          "storage/execs",
          "storage/environments"]
@@ -30,7 +29,7 @@ redirect_stdin(devnull) do
     redirect_stderr(devnull) do
         redirect_stdout(devnull) do
             RemoteHPC.configure_local(; interactive = false)
-            return t = @async RemoteHPC.julia_main()
+            t = @async RemoteHPC.julia_main(verbose=2)
         end
     end
 end
@@ -55,7 +54,7 @@ for sched in scheds
             kill(s)
             s.scheduler = sched
             save(s)
-            t = @async RemoteHPC.julia_main()
+            t = @async RemoteHPC.julia_main(verbose=2)
             while !isalive(local_server())
                 sleep(0.1)
             end
@@ -148,8 +147,8 @@ for sched in scheds
 end
 @testset "files api" begin
     @test length(readdir(s, config_path())) == 3
-    @test filesize(s, config_path("logs/daemon/restapi.log")) > 0
-    @test mtime(s, config_path("logs/daemon/restapi.log")) > 0
+    @test filesize(s, config_path("logs/restapi.log")) > 0
+    @test mtime(s, config_path("logs/restapi.log")) > 0
     tname = tempname()
     write(s, tname, "test")
     tname2 = tempname()

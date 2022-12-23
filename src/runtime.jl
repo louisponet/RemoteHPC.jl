@@ -86,99 +86,116 @@ function Base.fill!(qu::Queue, s::Scheduler, init)
     end
     return qu
 end
+
+Base.@kwdef mutable struct ServerData
+    server::Server
+    total_requests::Int = 0
+    current_requests::Int = 0
+    t::Float64 = time()
+    requests_per_second::Float64 = 0.0
+    total_job_submissions::Int = 0
+    submit_channel::Channel{String} = Channel{String}(Inf)
+    queue::Queue = Queue()
+    sleep_time::Float64 = 5.0
+    connections::Dict{String, Bool} = Dict{String, Bool}()
+    stop::Bool = false
+    lock::ReentrantLock = ReentrantLock()
+end
+
+
 const SLEEP_TIME = Ref(5.0)
-function main_loop(s::Server, submit_channel, queue, main_loop_stop)
-    fill!(queue, s.scheduler, true)
-    @info (timestamp = string(Dates.now()), username = get(ENV, "USER", "nouser"),
-           host = gethostname(), pid = getpid())
 
+function main_loop(s::ServerData)
+    fill!(s.queue, s.server.scheduler, true)
     # Used to identify if multiple servers are running in order to selfdestruct 
-    log_mtimes = mtime.(joinpath.((config_path("logs/runtimes/"),),
-                                  readdir(config_path("logs/runtimes/"))))
-    t = Threads.@spawn while !main_loop_stop[]
+    # log_mtimes = mtime.(joinpath.((config_path("logs/runtimes/"),), readdir(config_path("logs/runtimes/"))))
+    t = Threads.@spawn while !s.stop
         try
-            fill!(queue, s.scheduler, false)
-            JSON3.write(config_path("jobs", "queue.json"), queue.info)
+            fill!(s.queue, s.server.scheduler, false)
+            JSON3.write(config_path("jobs", "queue.json"), s.queue.info)
         catch e
-            @error "Queue error:" e stacktrace(catch_backtrace())
+            log_error(e, logtype = RuntimeLog)
         end
-        sleep(SLEEP_TIME[])
+        sleep(s.sleep_time)
     end
-    Threads.@spawn while !main_loop_stop[]
+    Threads.@spawn while !s.stop
         try
-            handle_job_submission!(queue, s, submit_channel)
+            handle_job_submission!(s)
         catch e
-            @error "Job submission error:" e stacktrace(catch_backtrace())
+            log_error(e, logtype = RuntimeLog)
         end
-        sleep(SLEEP_TIME[])
+        sleep(s.sleep_time)
     end
-    Threads.@spawn while !main_loop_stop[]
-        monitor_issues(log_mtimes)
-
+    Threads.@spawn while !s.stop
+        # monitor_issues(log_mtimes)
         try
-            print_log(queue)
-        catch
-            @error "Logging error:" e stacktrace(catch_backtrace())
+            log_info(s)
+        catch e
+            log_error(e, logtype = RuntimeLog)
         end
         if ispath(config_path("self_destruct"))
-            @info (timestamp = Dates.now(),
-                   message = "self_destruct found, self destructing...")
+            @debug "self_destruct found, self destructing..."
             exit()
         end
-        sleep(SLEEP_TIME[])
+        sleep(s.sleep_time)
     end
     fetch(t)
-    return JSON3.write(config_path("jobs", "queue.json"), queue.info)
+    return JSON3.write(config_path("jobs", "queue.json"), s.queue.info)
 end
 
-function print_log(queue)
-    # @info (timestamp = string(Dates.now()), njobs = length(queue.current_queue), nprocs = nprocs)
+function log_info(s::ServerData)
+    dt = time() - s.t
+    lock(s.lock)
+    curreq = s.current_requests
+    s.current_requests = 0
+    s.t = time()
+    unlock(s.lock)
+    s.requests_per_second = curreq / dt
+    s.total_requests += curreq
+    
+    @debugv 0 "current_queue: $(length(s.queue.info.current_queue)) - submit_queue: $(length(s.queue.info.submit_queue))" logtype=RuntimeLog
+    @debugv 0 "total requests: $(s.total_requests) - r/s: $(s.requests_per_second)" logtype=RESTLog 
 end
+
 
 function monitor_issues(log_mtimes)
-    new_mtimes = mtime.(joinpath.((config_path("logs/runtimes"),),
-                                  readdir(config_path("logs/runtimes"))))
-    if length(new_mtimes) != length(log_mtimes)
-        @error "More Server logs got created signalling a server was started while a previous was running."
-        touch(config_path("self_destruct"))
-    end
-    ndiff = length(filter(x -> log_mtimes[x] != new_mtimes[x], 1:length(log_mtimes)))
-    if ndiff > 1
-        @error "More Server logs modification times differed than 1."
-        touch(config_path("self_destruct"))
-    end
-    daemon_log = config_path("logs/daemon/restapi.log")
-    if filesize(daemon_log) > 1e9
-        open(daemon_log, "w") do f
-            return write(f, "")
-        end
-    end
+    # new_mtimes = mtime.(joinpath.((config_path("logs/runtimes"),),
+    #                               readdir(config_path("logs/runtimes"))))
+    # if length(new_mtimes) != length(log_mtimes)
+    #     @error "More Server logs got created signalling a server was started while a previous was running." logtype=RuntimeLog
+    #     touch(config_path("self_destruct"))
+    # end
+    # ndiff = length(filter(x -> log_mtimes[x] != new_mtimes[x], 1:length(log_mtimes)))
+    # if ndiff > 1
+    #     @error "More Server logs modification times differed than 1." logtype=RuntimeLog
+    #     touch(config_path("self_destruct"))
+    # end
 end
 
-function handle_job_submission!(queue, s::Server, submit_channel)
-    job_dirs = queue.info.submit_queue
-    njobs = length(queue.info.current_queue)
-    while !isempty(submit_channel)
-        push!(job_dirs, take!(submit_channel))
+function handle_job_submission!(s::ServerData)
+    job_dirs = s.queue.info.submit_queue
+    njobs = length(s.queue.info.current_queue)
+    while !isempty(s.submit_channel)
+        push!(job_dirs, take!(s.submit_channel))
     end
-    n_submit = min(s.max_concurrent_jobs - njobs, length(job_dirs))
+    n_submit = min(s.server.max_concurrent_jobs - njobs, length(job_dirs))
     for i in 1:n_submit
         job_dir = job_dirs[i]
         if ispath(job_dir)
             curtries = 0
             while -1 < curtries < 3
                 try
-                    id = submit(s.scheduler, job_dir)
-                    @info (string(Dates.now()), job_dir, id, Pending)
-                    lock(queue) do q
+                    id = submit(s.server.scheduler, job_dir)
+                    @debugv 2 "Submitting Job: $(id)@$(job_dir)" logtype=RuntimeLog
+                    lock(s.queue) do q
                         return q.current_queue[job_dir] = Job(id, Pending)
                     end
                     curtries = -1
                 catch e
                     curtries += 1
-                    sleep(SLEEP_TIME[])
+                    sleep(s.sleep_time)
                     with_logger(FileLogger(joinpath(job_dir, "submission.err"), append=true)) do
-                        @error e stacktrace(catch_backtrace())
+                        log_error(e)
                     end
                 end
             end
@@ -186,35 +203,16 @@ function handle_job_submission!(queue, s::Server, submit_channel)
                 push!(job_dirs, job_dir)
             end
         else
-            @warn "Submission job at dir: $job_dir is not a directory."
+            @warnv 2 "Submission job at dir: $job_dir is not a directory." logtype=RuntimeLog
         end
     end
     return deleteat!(job_dirs, 1:n_submit)
 end
 
-function server_logger()
-    p = config_path("logs/runtimes")
-    mkpath(p)
-    serverid = length(readdir(p)) + 1
-    return FileLogger(config_path(joinpath(p, "$serverid.log")); append = false)
-end
-
-function restapi_logger()
-    p = config_path("logs/daemon")
-    mkpath(p)
-    return FileLogger(joinpath(p, "restapi.log"); append = false)
-end
-function job_logger(id::Int)
-    p = config_path("logs/jobs")
-    mkpath(p)
-    return FileLogger(joinpath(p, "$id.log"))
-end
-
-function requestHandler(handler)
+function requestHandler(handler, s::ServerData)
     return function f(req)
         start = Dates.now()
-        @info (timestamp = string(start), event = "Begin", tid = Threads.threadid(),
-               method = req.method, target = req.target)
+        @debugv 2 "BEGIN - $(req.method) - $(req.target)" logtype=RESTLog
         local resp
         try
             obj = handler(req)
@@ -226,17 +224,13 @@ function requestHandler(handler)
                 resp = HTTP.Response(200, JSON3.write(obj))
             end
         catch e
-            s = IOBuffer()
-            showerror(s, e, catch_backtrace(); backtrace = true)
-            errormsg = String(resize!(s.data, s.size))
-            @error errormsg
-            resp = HTTP.Response(500, errormsg)
+            resp = HTTP.Response(500, log_error(e))
         end
         stop = Dates.now()
-        @info (timestamp = string(stop), event = "End", tid = Threads.threadid(),
-               method = req.method, target = req.target,
-               duration = Dates.value(stop - start),
-               status = resp.status, bodysize = length(resp.body))
+        @debugv 2 "END - $(req.method) - $(req.target) - $(resp.status) - $(Dates.value(stop - start)) - $(length(resp.body))" logtype=RESTLog
+        lock(s.lock)
+        s.current_requests += 1
+        unlock(s.lock)
         return resp
     end
 end
@@ -263,7 +257,7 @@ function check_connections!(connections)
         if s.domain == "localhost"
             continue
         end
-        @info "Checking $n connectivity."
+        @debugv 1 "Checking $n connectivity." logtype=RuntimeLog
         tsk = Threads.@spawn try
             return HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2)  !== nothing
         catch
@@ -271,14 +265,14 @@ function check_connections!(connections)
             if t === nothing
                 # Tunnel was dead -> create one and try again
                 try
-                    remote_server = load_config(s)
+                    remote_server = load_config(s.username, s.domain, config_path(s))
                     remote_server === nothing && return false
                     s.port = construct_tunnel(s, remote_server.port)
                     sleep(2)
                     s.uuid = remote_server.uuid
                     try
                         if HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
-                            save(s)
+                            save(JSON3.read(HTTP.get(s, URI(path="/server/config"); connect_timeout = 2, retries = 2).body, Server))
                             return true
                         end
                     catch
@@ -309,19 +303,19 @@ function check_connections!(connections)
                 nothing
             end
             if connections[n]
-                @info now(), "Lost connection to $n."
+                @debugv 1 "Lost connection to $n." logtype=RuntimeLog
             end
             connections[n] = false
         elseif istaskfailed(tsk)
             destroy_tunnel(s)
             if connections[n]
-                @info now(), "Lost connection to $n."
+                @debugv 1 "Lost connection to $n." logtype=RuntimeLog
             end
             connections[n] = false
         else
             connection = fetch(tsk)
             if connection != connections[n]
-                @info now(), "Connected to $n."
+                @debugv 1 "Connected to $n." logtype=RuntimeLog
             end
             connections[n] = connection
         end
@@ -329,69 +323,69 @@ function check_connections!(connections)
         
 end
 
-function julia_main()::Cint
-    # initialize_config_dir()
-    s = local_server()
-    port, server = listenany(ip"0.0.0.0", 8080)
-    s.port = port
-    user_uuid = UUID(s.uuid)
-
-    logger = server_logger()
-
-    should_stop = Ref(false)
-    connections = Dict{String, Bool}([n => false for n in load(Server(""))])
-    pop!(connections, s.name)
-    connections_task = @tspawnat min(Threads.nthreads(), 3) with_logger(logger)  do
-        while !should_stop[]
+function julia_main(;verbose=0)::Cint
+    logger = TimestampLogger(TeeLogger(HTTPLogger(),
+                                       NotHTTPLogger(TeeLogger(RESTLogger(),
+                                                     RuntimeLogger(),
+                                                     GenericLogger()))))
+    with_logger(logger) do
+        LoggingExtras.withlevel(Debug; verbosity=verbose) do
             try
-                all_servers = load(Server(""))
-                for k in filter(x-> !(x in all_servers), keys(connections))
-                    delete!(connections, k)
+                # initialize_config_dir()
+                s = local_server()
+                port, server = listenany(ip"0.0.0.0", 8080)
+                s.port = port
+
+                server_data = ServerData(server=s)
+
+                @debug "Starting connections task" logtype=RuntimeLog
+                connections_task = @tspawnat min(Threads.nthreads(), 3) while !server_data.stop
+                    try
+                        all_servers = load(Server(""))
+                        for k in filter(x-> !(x in all_servers), keys(server_data.connections))
+                            delete!(server_data.connections, k)
+                        end
+                        for n in all_servers
+                            n == s.name && continue
+                            server_data.connections[n] = get(server_data.connections, n, false)
+                        end
+                        check_connections!(server_data.connections)
+                        @debugv 0 "Connections: $(server_data.connections)" logtype=RuntimeLog
+                    catch e
+                        log_error(e, logtype=RuntimeLog)
+                    end
+                    sleep(1)
                 end
-                for n in all_servers
-                    n == s.name && continue
-                    connections[n] = get(connections, n, false)
+
+                @debug "Setting up Router" logtype=RuntimeLog
+
+                router = HTTP.Router()
+                setup_core_api!(router, server_data)
+                setup_job_api!(router, server_data)
+                setup_database_api!(router)
+                
+                @debug "Starting main loop" logtype=RuntimeLog
+
+                t = @tspawnat min(Threads.nthreads(), 2) try
+                    main_loop(server_data)
+                catch e
+                    log_error(e, logtype=RuntimeLog)
                 end
-                check_connections!(connections)
+                @debug "Starting RESTAPI - HOST $(gethostname()) - USER $(get(ENV, "USER", "unknown_user"))" logtype=RuntimeLog 
+                @async HTTP.serve(router |> x -> requestHandler(x, server_data) |> x -> AuthHandler(x, UUID(s.uuid)),
+                                  "0.0.0.0", port, server = server)
+                save(s)
+                while !server_data.stop
+                    sleep(1)
+                end
+                fetch(t)
+                fetch(connections_task)
+                close(server)
+                return 0
             catch e
-                @error e, stacktrace(catch_backtrace())
+                log_error(e)
+                rethrow(e)
             end
-            sleep(1)
         end
     end
-
-
-    router = HTTP.Router()
-    submit_channel = Channel{String}(Inf)
-    job_queue = Queue()
-    setup_core_api!(router, s, connections)
-    setup_job_api!(router, submit_channel, job_queue, s.scheduler)
-    setup_database_api!(router)
-
-    HTTP.register!(router, "GET", "/server/config", (req) -> s)
-
-    t = @tspawnat min(Threads.nthreads(), 2) with_logger(logger) do
-        try
-            main_loop(s, submit_channel, job_queue, should_stop)
-        catch e
-            @error e, stacktrace(catch_backtrace())
-        end
-    end
-    HTTP.register!(router, "PUT", "/server/kill",
-                   (req) -> (should_stop[] = true; true))
-    save(s)
-    with_logger(restapi_logger()) do
-        @info (timestamp = string(Dates.now()), username = ENV["USER"],
-               host = gethostname(), pid = getpid(), port = port)
-
-        @async HTTP.serve(router |> requestHandler |> x -> AuthHandler(x, user_uuid),
-                          "0.0.0.0", port, server = server)
-        while !should_stop[]
-            sleep(1)
-        end
-    end
-    fetch(t)
-    fetch(connections_task)
-    close(server)
-    return 0
 end

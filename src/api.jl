@@ -28,7 +28,7 @@ function execute_function(req::HTTP.Router)
     return func(args...)
 end
 
-function get_info(req, s::Server)
+function get_info(req, s::ServerData)
     uri = URI(req.target)
     query = HTTP.queryparams(uri)
     out = []
@@ -41,17 +41,41 @@ function get_info(req, s::Server)
             if i == "version"
                 push!(out, PACKAGE_VERSION)
             elseif i == "server"
-                push!(out, s)
+                push!(out, s.server)
             end
         end
     end
     return out
-end 
+end
 
-function setup_core_api!(router::HTTP.Router, s::Server, connections)
+function server_config!(req, s::ServerData)
+    uri = URI(req.target)
+    splt = splitpath(req.target)
+    if splt[4] == "sleep_time"
+        return s.sleep_time = parse(Float64, splt[5])
+    end 
+    field = Symbol(splt[4])
+    server = s.server
+    setfield!(server, field, parse(fieldtype(server, field), splt[5]))
+    save(server)
+    return server
+end
+function server_config(req, s::ServerData)
+    server = s.server
+    uri = URI(req.target)
+    splt = splitpath(req.target)
+    if length(splt) == 3
+        return server
+    else
+        return getfield(server, Symbol(splt[4]))
+    end
+end
+
+function setup_core_api!(router::HTTP.Router, s::ServerData)
+    HTTP.register!(router, "PUT", "/server/kill", (req) -> (s.stop = true))
     HTTP.register!(router, "GET", "/info/", res -> get_info(res, s))
     HTTP.register!(router, "GET", "/isalive/", (res) -> true)
-    HTTP.register!(router, "GET", "/isalive/*", (res) -> (n = splitpath(res.target)[end]; haskey(connections, n) && connections[n]))
+    HTTP.register!(router, "GET", "/isalive/*", (res) -> (n = splitpath(res.target)[end]; haskey(s.connections, n) && s.connections[n]))
     HTTP.register!(router, "GET", "/ispath/", api_ispath)
     HTTP.register!(router, "GET", "/realpath/", api_realpath)
     HTTP.register!(router, "GET", "/read/", api_read)
@@ -64,6 +88,9 @@ function setup_core_api!(router::HTTP.Router, s::Server, connections)
     HTTP.register!(router, "POST", "/symlink/", api_symlink)
     HTTP.register!(router, "POST", "/mkpath/", api_mkpath)
     HTTP.register!(router, "POST", "/cp/", api_cp)
+    HTTP.register!(router, "POST", "/server/config/*", req -> server_config!(req, s))
+    HTTP.register!(router, "GET", "/server/config/**", req -> server_config(req, s))
+    HTTP.register!(router, "GET", "/server/config", req -> server_config(req, s))
 end
 
 submit_job(req, channel) = put!(channel, path(req))
@@ -166,17 +193,16 @@ function abort(req::HTTP.Request, queue::Queue, sched::Scheduler)
     return j.id
 end
 
-function setup_job_api!(router::HTTP.Router, submit_channel, queue::Queue,
-                        scheduler::Scheduler)
-    HTTP.register!(router, "POST", "/job/", (req) -> save_job(req, queue, scheduler))
-    HTTP.register!(router, "PUT", "/job/", (req) -> submit_job(req, submit_channel))
-    HTTP.register!(router, "GET", "/job/", (req) -> get_job(req, queue))
+function setup_job_api!(router::HTTP.Router, s::ServerData)
+    HTTP.register!(router, "POST", "/job/", (req) -> save_job(req, s.queue, s.server.scheduler))
+    HTTP.register!(router, "PUT", "/job/", (req) -> submit_job(req, s.submit_channel))
+    HTTP.register!(router, "GET", "/job/", (req) -> get_job(req, s.queue))
     HTTP.register!(router, "GET", "/jobs/state",
-                   (req) -> get_jobs(JSON3.read(req.body, JobState), queue))
+                   (req) -> get_jobs(JSON3.read(req.body, JobState), s.queue))
     HTTP.register!(router, "GET", "/jobs/fuzzy",
-                   (req) -> get_jobs(JSON3.read(req.body, String), queue))
+                   (req) -> get_jobs(JSON3.read(req.body, String), s.queue))
     return HTTP.register!(router, "POST", "/abort/",
-                          (req) -> abort(req, queue, scheduler))
+                          (req) -> abort(req, s.queue, s.server.scheduler))
 end
 
 function load(req::HTTP.Request)

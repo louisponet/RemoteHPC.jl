@@ -86,7 +86,7 @@ function configure!(s::Server; interactive = true)
                     s.julia_exec = install_julia(s)
                     install_RemoteHPC(s)
                 else
-                    @info """
+                    @debug """
                     You will need to install julia, e.g. by using `RemoteHPC.install_julia` or manually on the cluster.
                     Afterwards don't forget to update server.julia_exec to the correct one before starting the server.
                     """
@@ -150,7 +150,7 @@ function configure_local(; interactive = true)
     s = Server(; name = host, username = user, domain = "localhost")
     configure!(s; interactive = interactive)
 
-    @info "saving server configuration...", s
+    @debug "saving server configuration...", s
     save(s)
     if interactive
         start_server = request("Start server?", RadioMenu(["yes", "no"]))
@@ -171,7 +171,7 @@ function Server(s::AbstractString; overwrite=false)
         return configure_local(interactive=false)
     end
     # Create new server 
-    @info "Creating new Server configuration..."
+    @debug "Creating new Server configuration..."
     if occursin("@", s)
         username, domain = split(s, "@")
         name = ask_input(String, "Please specify the Server's identifying name")
@@ -192,7 +192,7 @@ function Server(s::AbstractString; overwrite=false)
         error("$username@$domain not reachable")
     end
     server = Server(name=name, username=username, domain=domain)
-    @info "Trying to pull existing configuration from $username@$domain..."
+    @debug "Trying to pull existing configuration from $username@$domain..."
     server = load_config(username, domain, config_path(server))
     if server !== nothing
         server.name = name
@@ -206,7 +206,7 @@ function Server(s::AbstractString; overwrite=false)
         end
 
     else
-        @info "Couldn't pull server configuration, creating new..."
+        @debug "Couldn't pull server configuration, creating new..."
         server = Server(; name = name, domain = domain, username = username)
         configure!(server)
     end
@@ -233,7 +233,7 @@ function install_julia(s::Server)
     server_command(s, "rm $julia_tar")
     finish!(p)
     @assert res.exitcode == 0 "Issue unpacking julia executable on cluster, please install julia manually"
-    @info "julia installed on Server $(s.name) in ~/julia-$VERSION/bin"
+    @debug "julia installed on Server $(s.name) in ~/julia-$VERSION/bin"
     return "~/julia-$VERSION/bin/julia"
 end
 
@@ -245,22 +245,22 @@ function install_RemoteHPC(s::Server, julia_exec = s.julia_exec)
     else
         julia_exec = res.stdout[1:end-1]
     end
-    @info "Installing RemoteHPC"
+    @debug "Installing RemoteHPC"
     s.julia_exec = julia_exec
     res = julia_cmd(s, "using Pkg; Pkg.activate(joinpath(Pkg.depots()[1], \"config/RemoteHPC\")); Pkg.add(\"RemoteHPC\");Pkg.build(\"RemoteHPC\")")
     @assert res.exitcode == 0 "Something went wrong installing RemoteHPC on server, please install manually"
 
-    @info "RemoteHPC installed on remote cluster, try starting the server with `start(server)`."
+    @debug "RemoteHPC installed on remote cluster, try starting the server with `start(server)`."
     return
 end
 
 function update_RemoteHPC(s::Server)
     alive = isalive(s)
     if alive
-        @info "Server running, killing it first."
+        @debug "Server running, killing it first."
         kill(s)
     end
-    @info "Updating RemoteHPC"
+    @debug "Updating RemoteHPC"
     if islocal(s)
         curproj = Pkg.project().path
         Pkg.activate(joinpath(depot_path(s), "config/RemoteHPC"))
@@ -271,11 +271,11 @@ function update_RemoteHPC(s::Server)
         if res.exitcode != 0
             @error "stdout: $(res.stdout)", "stderr: $(res.stderr)", "exitcode: $(res.exitcode)"
         else
-            @info "Updated RemoteHPC succesfully"
+            @debug "Updated RemoteHPC succesfully"
         end
     end
     if alive
-        @info "Restarting server."
+        @debug "Restarting server."
         start(s)
     end
 end
@@ -351,7 +351,7 @@ function load_config(username, domain, conf_path)
 end
 function load_config(s::Server)
     if isalive(s)
-        return JSON3.read(HTTP.get(s, URI(path="/server/config")).body, Server)
+        return JSON3.read(HTTP.get(s, URI(path="/server/config/")).body, Server)
     else
         return load_config(s.username, s.domain, config_path(s))
     end

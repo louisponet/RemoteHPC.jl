@@ -1,5 +1,8 @@
 module RemoteHPC
 using LoggingExtras
+using Logging
+using Dates
+
 using ThreadPools
 using HTTP
 using HTTP.URIs: URI
@@ -26,6 +29,8 @@ function getfirst(f, itr)
     id === nothing && return nothing
     return itr[id]
 end
+
+include("logging.jl")
 
 include("database.jl")
 

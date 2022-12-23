@@ -26,11 +26,11 @@ StructTypes.subtypekey(::Type{Scheduler}) = :type
 function Scheduler(d::Dict{String,Any})
     t = d["type"]
     if t == "bash"
-        return Bash()
+        return Bash(t)
     elseif t == "slurm"
-        return Slurm()
+        return Slurm(t)
     else
-        return HQ(t["server_command"], d["allocs"])
+        return HQ(t, d["server_command"], string.(d["allocs"]))
     end
 end
 Base.convert(::Type{Scheduler}, d::Dict) = Scheduler(d)
