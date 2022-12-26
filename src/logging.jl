@@ -25,30 +25,33 @@ end
 mutable struct TimeBufferedFileLogger <: AbstractLogger
     path::String
     buffer::IOBuffer
+    lock::ReentrantLock
     interval::Float64
     last_write::Float64
 end
 
-TimeBufferedFileLogger(p::String; interval = 10.0) = TimeBufferedFileLogger(p, IOBuffer(), interval, 0.0)
+TimeBufferedFileLogger(p::String; interval = 10.0) = TimeBufferedFileLogger(p, IOBuffer(), ReentrantLock(), interval, 0.0)
     
 function Logging.handle_message(logger::TimeBufferedFileLogger, level::LogLevel, message, _module, group, id,
                         filepath, line; kwargs...)
     @nospecialize
-    iob = IOContext(logger.buffer, :compact => true)
     msglines = eachsplit(chomp(convert(String, string(message))::String), '\n')
     msg1, rest = Iterators.peel(msglines)
+    curt = time()
+    dt = curt - logger.last_write
+    lock(logger.lock)
+    iob = IOContext(logger.buffer, :compact => true)
     println(iob, msg1)
     for msg in rest
         println(iob, "  ", msg)
     end
-    curt = time()
-    dt = curt - logger.last_write
     if dt > logger.interval
         open(logger.path, append = true) do f
             write(f, take!(logger.buffer))
         end
         logger.last_write = curt
     end
+    unlock(logger.lock)
 end
 LoggingExtras.min_enabled_level(::TimeBufferedFileLogger) = BelowMinLevel
 LoggingExtras.shouldlog(::TimeBufferedFileLogger, args...) = true
@@ -76,8 +79,8 @@ function GenericLogger()
     end
 end
 
-function HTTPLogger()
-    return EarlyFilteredLogger(TimeBufferedFileLogger(config_path("logs/HTTP.log"))) do log
+function HTTPLogger(logger = TimeBufferedFileLogger(config_path("logs/HTTP.log")))
+    return EarlyFilteredLogger(logger) do log
         return log._module === HTTP || parentmodule(log._module) === HTTP
     end
 end

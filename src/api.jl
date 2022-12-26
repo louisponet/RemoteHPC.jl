@@ -121,7 +121,7 @@ function get_job(req::HTTP.Request, queue::Queue)
                 if jinfo !== nothing
                     push!(out, jinfo[1])
                 end
-            elseif d == "environment"
+           elseif d == "environment"
                 if jinfo !== nothing
                     push!(out, jinfo[2])
                 end

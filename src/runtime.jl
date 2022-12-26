@@ -259,7 +259,7 @@ function check_connections!(connections)
         end
         @debugv 1 "Checking $n connectivity." logtype=RuntimeLog
         tsk = Threads.@spawn try
-            return HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2)  !== nothing
+            return HTTP.get(s, URI(path="/isalive"))  !== nothing
         catch
             t = find_tunnel(s)
             if t === nothing
@@ -271,8 +271,8 @@ function check_connections!(connections)
                     sleep(2)
                     s.uuid = remote_server.uuid
                     try
-                        if HTTP.get(s, URI(path="/isalive"); connect_timeout = 2, retries = 2) !== nothing
-                            save(JSON3.read(HTTP.get(s, URI(path="/server/config"); connect_timeout = 2, retries = 2).body, Server))
+                        if HTTP.get(s, URI(path="/isalive")) !== nothing
+                            save(s)
                             return true
                         end
                     catch

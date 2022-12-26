@@ -366,9 +366,9 @@ function depot_path(s::Server)
     if islocal(s)
         occursin("cache", Pkg.depots()[1]) ? Pkg.depots()[2] : Pkg.depots()[1]
     else
-        t = julia_cmd(s, "print(Base.DEPOT_PATH[1])").stdout
+        t = julia_cmd(s, "print(realpath(Base.DEPOT_PATH[1]))").stdout
         if occursin("cache", t)
-            return julia_cmd(s, "print(Base.DEPOT_PATH[2])").stdout
+            return julia_cmd(s, "print(realpath(Base.DEPOT_PATH[2]))").stdout
         else
             return t
         end
