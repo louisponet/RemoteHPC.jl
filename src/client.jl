@@ -94,6 +94,7 @@ function start(s::Server; verbose=0)
         @debug "Saving updated server info..."
         save(s)
     end
+    HTTP.put(LOCAL_SERVER[], URI(path="/server/check_connections"))
     while isalive(LOCAL_SERVER[]) && !isalive(s)
         sleep(0.1)
     end

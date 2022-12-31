@@ -91,6 +91,7 @@ function setup_core_api!(router::HTTP.Router, s::ServerData)
     HTTP.register!(router, "POST", "/server/config/*", req -> server_config!(req, s))
     HTTP.register!(router, "GET", "/server/config/**", req -> server_config(req, s))
     HTTP.register!(router, "GET", "/server/config", req -> server_config(req, s))
+    HTTP.register!(router, "PUT", "/server/check_connections", req -> check_connections!(s))
 end
 
 submit_job(req, channel) = put!(channel, path(req))

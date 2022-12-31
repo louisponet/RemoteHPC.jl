@@ -320,9 +320,23 @@ function check_connections!(connections)
             connections[n] = connection
         end
     end
-        
+    return connections
 end
 
+function check_connections!(server_data::ServerData)
+    all_servers = load(Server(""))
+    for k in filter(x-> !(x in all_servers), keys(server_data.connections))
+        delete!(server_data.connections, k)
+    end
+    for n in all_servers
+        n == server_data.server.name && continue
+        server_data.connections[n] = get(server_data.connections, n, false)
+    end
+    conn = check_connections!(server_data.connections)
+    @debugv 0 "Connections: $(server_data.connections)" logtype=RuntimeLog
+    return conn
+end
+    
 function julia_main(;verbose=0)::Cint
     logger = TimestampLogger(TeeLogger(HTTPLogger(),
                                        NotHTTPLogger(TeeLogger(RESTLogger(),
@@ -338,24 +352,8 @@ function julia_main(;verbose=0)::Cint
 
                 server_data = ServerData(server=s)
 
-                @debug "Starting connections task" logtype=RuntimeLog
-                connections_task = @tspawnat min(Threads.nthreads(), 3) while !server_data.stop
-                    try
-                        all_servers = load(Server(""))
-                        for k in filter(x-> !(x in all_servers), keys(server_data.connections))
-                            delete!(server_data.connections, k)
-                        end
-                        for n in all_servers
-                            n == s.name && continue
-                            server_data.connections[n] = get(server_data.connections, n, false)
-                        end
-                        check_connections!(server_data.connections)
-                        @debugv 0 "Connections: $(server_data.connections)" logtype=RuntimeLog
-                    catch e
-                        log_error(e, logtype=RuntimeLog)
-                    end
-                    sleep(1)
-                end
+                @debug "Checking connections..." logtype=RuntimeLog
+                check_connections!(server_data)
 
                 @debug "Setting up Router" logtype=RuntimeLog
 
