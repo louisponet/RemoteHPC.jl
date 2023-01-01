@@ -374,10 +374,10 @@ function julia_main(;verbose=0)::Cint
                                   "0.0.0.0", port, server = server)
                 save(s)
                 while !server_data.stop
+                    @debug "Shutting down server"
                     sleep(1)
                 end
                 fetch(t)
-                fetch(connections_task)
                 close(server)
                 return 0
             catch e

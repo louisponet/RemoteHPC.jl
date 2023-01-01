@@ -57,24 +57,24 @@ LoggingExtras.min_enabled_level(::TimeBufferedFileLogger) = BelowMinLevel
 LoggingExtras.shouldlog(::TimeBufferedFileLogger, args...) = true
 LoggingExtras.catch_exceptions(filelogger::TimeBufferedFileLogger) = false
 
-function RESTLogger()
+function RESTLogger(; kwargs...)
     test(log) = get(log.kwargs, :logtype, nothing) == RESTLog
-    tlogger = TransformerLogger(TimeBufferedFileLogger(config_path("logs/restapi.log"))) do log
+    tlogger = TransformerLogger(TimeBufferedFileLogger(config_path("logs/restapi.log"); kwargs...)) do log
         return merge(log, (;kwargs=()))
     end
     return ActiveFilteredLogger(test, tlogger)
 end
 
-function RuntimeLogger()
+function RuntimeLogger(;kwargs...)
     test(log) = get(log.kwargs, :logtype, nothing) == RuntimeLog
-    tlogger = TransformerLogger(TimeBufferedFileLogger(config_path("logs/runtime.log"))) do log
+    tlogger = TransformerLogger(TimeBufferedFileLogger(config_path("logs/runtime.log"); kwargs...)) do log
         return merge(log, (;kwargs=()))
     end
     return ActiveFilteredLogger(test, tlogger)
 end
 
-function GenericLogger()
-    return ActiveFilteredLogger(TimeBufferedFileLogger(config_path("logs/errors.log"))) do log
+function GenericLogger(; kwargs...)
+    return ActiveFilteredLogger(TimeBufferedFileLogger(config_path("logs/errors.log"); kwargs...)) do log
         return get(log.kwargs, :logtype, nothing) === nothing
     end
 end
