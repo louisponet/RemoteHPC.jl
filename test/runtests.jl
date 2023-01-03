@@ -8,8 +8,8 @@ using RemoteHPC.BinaryTraits
     @test @check(Environment).result
 end
 
-# tconfdir = tempname()
-tconfdir = "/tmp/remotehpc"
+tconfdir = tempname()
+# tconfdir = "/tmp/remotehpc"
 if ispath(tconfdir)
     rm(tconfdir; recursive = true)
 end
