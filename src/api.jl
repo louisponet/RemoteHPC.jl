@@ -182,16 +182,26 @@ function abort(req::HTTP.Request, queue::Queue, sched::Scheduler)
     jdir = path(req)
     j = get(queue.info.current_queue, jdir, nothing)
     if j === nothing
-        error("No Job is running at $jdir.")
-    end
-    abort(sched, j.id)
-    lock(queue) do q
-        j = pop!(q.current_queue, jdir)
-        j.state = Cancelled
-        return q.full_queue[jdir] = j
-    end
+        jid = findfirst(x->x == jdir, queue.info.submit_queue)
+        if jid === nothing
+            error("No Job is running at $jdir.")
+        else
+            lock(queue) do q
+                deleteat!(q.submit_queue, jid)
+                q.full_queue[jdir].state = Cancelled
+            end
+            return 0
+        end
+    else
+        abort(sched, j.id)
+        lock(queue) do q
+            j = pop!(q.current_queue, jdir)
+            j.state = Cancelled
+            q.full_queue[jdir] = j
+        end
 
-    return j.id
+        return j.id
+    end
 end
 
 function setup_job_api!(router::HTTP.Router, s::ServerData)
