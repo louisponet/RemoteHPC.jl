@@ -109,7 +109,9 @@ Kills the daemon process on [`Server`](@ref) `s`.
 function Base.kill(s::Server)
     HTTP.put(s, URI(path="/server/kill"))
     destroy_tunnel(s)
-    HTTP.put(LOCAL_SERVER[], URI(path="/server/check_connections"))
+    if !islocal(s)
+        HTTP.put(LOCAL_SERVER[], URI(path="/server/check_connections"))
+    end
     while isalive(s)
         sleep(0.1)
     end
