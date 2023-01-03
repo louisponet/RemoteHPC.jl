@@ -38,7 +38,7 @@ function Base.fill!(qu::Queue, s::Scheduler, init)
                 lock(qu) do q
                     q.full_queue = StructTypes.constructfrom(Dict{String,Job}, tq[:full_queue])
                     q.current_queue = StructTypes.constructfrom(Dict{String, Job}, tq[:current_queue])
-                    if tq[:submit_queue] isa Array
+                    if tq[:submit_queue] isa AbstractArray
                         for jdir in tq[:submit_queue]
                             q.submit_queue[jdir] = DEFAULT_PRIORITY
                             q.full_queue[jdir].state = Submitted
