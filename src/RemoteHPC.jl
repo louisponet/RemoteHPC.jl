@@ -17,6 +17,7 @@ using Base: @kwdef
 using Pkg
 using InteractiveUtils
 using BinaryTraits
+using DataStructures
 
 const CONFIG_DIR = occursin("cache", first(Base.DEPOT_PATH)) ?
                    abspath(Base.DEPOT_PATH[2], "config", "RemoteHPC") :
@@ -29,6 +30,8 @@ function getfirst(f, itr)
     id === nothing && return nothing
     return itr[id]
 end
+
+const DEFAULT_PRIORITY = 5
 
 include("logging.jl")
 
@@ -59,7 +62,7 @@ include("io.jl")
     rm(e)
 end
 
-export Server, start, restart, local_server, isalive, load, save, submit, abort, state, configure
+export Server, start, restart, local_server, isalive, load, save, submit, abort, state, configure, priority!
 export Calculation, Environment, Exec, HQ, Slurm, Bash
 export exec
 

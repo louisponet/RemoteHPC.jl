@@ -175,14 +175,14 @@ function load(s::Server, state::JobState)
     return JSON3.read(resp.body, Vector{String})
 end
 
-function submit(s::Server, dir::AbstractString)
+function submit(s::Server, dir::AbstractString, priority=DEFAULT_PRIORITY)
     adir = abspath(s, dir)
-    return HTTP.put(s, URI(path="/job/", query = Dict("path" => adir)))
+    return HTTP.put(s, URI(path="/job/", query = Dict("path" => adir, "priority" => priority)))
 end
-function submit(s::Server, dir::AbstractString, e::Environment, calcs::Vector{Calculation};
+function submit(s::Server, dir::AbstractString, e::Environment, calcs::Vector{Calculation}, priority=DEFAULT_PRIORITY;
                 kwargs...)
     adir = save(s, dir, e, calcs; kwargs...)
-    submit(s, adir)
+    submit(s, adir, priority)
     return adir
 end
 
@@ -202,6 +202,13 @@ function state(s::Server, dir::AbstractString)
     url = URI(path = "/job/", query = Dict("path" => adir, "data" => ["state"]))
     resp = HTTP.get(s, url)
     return JSON3.read(resp.body, Tuple{JobState})[1]
+end
+
+function priority!(s::Server, dir::AbstractString, priority::Int)
+    adir = abspath(s, dir)
+    url = URI(path = "/job/priority", query = Dict("path" => adir, "priority" => priority))
+    resp = HTTP.put(s, url)
+    return JSON3.read(resp.body, Int)
 end
 
 ask_name(::Type{S}) where {S} = ask_input(String, "Please specify a name for the new $S")

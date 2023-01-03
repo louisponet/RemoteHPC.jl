@@ -6,7 +6,7 @@ end
 Base.@kwdef mutable struct QueueInfo
     full_queue::Dict{String,Job} = Dict{String,Job}()
     current_queue::Dict{String,Job} = Dict{String,Job}()
-    submit_queue::Vector{String} = String[]
+    submit_queue::PriorityQueue{String, Int} = PriorityQueue{String, Int}(Base.Order.Reverse)
 end
 StructTypes.StructType(::Type{QueueInfo}) = StructTypes.Mutable()
 
@@ -21,7 +21,7 @@ function Base.lock(f::Function, q::Queue)
     try
         f(q.info)
     catch e
-        rethrow(e)
+        log_error(e, logtype=RuntimeLog)
     finally
         unlock(q.lock)
     end
@@ -33,11 +33,21 @@ function Base.fill!(qu::Queue, s::Scheduler, init)
         if ispath(qfile)
             t = read(qfile)
             if !isempty(t)
-                tq = JSON3.read(t, QueueInfo)
+                # TODO: should be deprecated
+                tq = JSON3.read(t)
                 lock(qu) do q
-                    copy!(q.full_queue, tq.full_queue)
-                    copy!(q.current_queue, tq.current_queue)
-                    return copy!(q.submit_queue, tq.submit_queue)
+                    q.full_queue = StructTypes.constructfrom(Dict{String,Job}, tq[:full_queue])
+                    q.current_queue = StructTypes.constructfrom(Dict{String, Job}, tq[:current_queue])
+                    if tq[:submit_queue] isa Array
+                        for jdir in tq[:submit_queue]
+                            q.submit_queue[jdir] = DEFAULT_PRIORITY
+                            q.full_queue[jdir].state = Submitted
+                        end
+                    else
+                        for (jdir, priority) in tq[:submit_queue]
+                            q.submit_queue[jdir] = priority
+                        end
+                    end
                 end
             end
         end
@@ -94,7 +104,7 @@ Base.@kwdef mutable struct ServerData
     t::Float64 = time()
     requests_per_second::Float64 = 0.0
     total_job_submissions::Int = 0
-    submit_channel::Channel{String} = Channel{String}(Inf)
+    submit_channel::Channel{Pair{String, Int}} = Channel{Pair{String, Int}}(Inf)
     queue::Queue = Queue()
     sleep_time::Float64 = 5.0
     connections::Dict{String, Bool} = Dict{String, Bool}()
@@ -173,14 +183,16 @@ function monitor_issues(log_mtimes)
 end
 
 function handle_job_submission!(s::ServerData)
-    job_dirs = s.queue.info.submit_queue
+    @debugv 2 "Submitting jobs" logtype=RuntimeLog
+    to_submit = s.queue.info.submit_queue
     njobs = length(s.queue.info.current_queue)
     while !isempty(s.submit_channel)
-        push!(job_dirs, take!(s.submit_channel))
+        enqueue!(to_submit, take!(s.submit_channel))
     end
-    n_submit = min(s.server.max_concurrent_jobs - njobs, length(job_dirs))
+    n_submit = min(s.server.max_concurrent_jobs - njobs, length(to_submit))
+    submitted = 0
     for i in 1:n_submit
-        job_dir = job_dirs[i]
+        job_dir, priority = dequeue_pair!(to_submit)
         if ispath(job_dir)
             curtries = 0
             while -1 < curtries < 3
@@ -191,6 +203,7 @@ function handle_job_submission!(s::ServerData)
                         return q.current_queue[job_dir] = Job(id, Pending)
                     end
                     curtries = -1
+                    submitted += 1
                 catch e
                     curtries += 1
                     sleep(s.sleep_time)
@@ -200,13 +213,13 @@ function handle_job_submission!(s::ServerData)
                 end
             end
             if curtries != -1
-                push!(job_dirs, job_dir)
+                enqueue!(to_submit, job_dir => priority + 1)
             end
         else
             @warnv 2 "Submission job at dir: $job_dir is not a directory." logtype=RuntimeLog
         end
     end
-    return deleteat!(job_dirs, 1:n_submit)
+    @debugv 2 "Submitted $submitted jobs" logtype=RuntimeLog
 end
 
 function requestHandler(handler, s::ServerData)
@@ -374,9 +387,9 @@ function julia_main(;verbose=0)::Cint
                                   "0.0.0.0", port, server = server)
                 save(s)
                 while !server_data.stop
-                    @debug "Shutting down server"
                     sleep(1)
                 end
+                @debug "Shutting down server"
                 fetch(t)
                 close(server)
                 return 0

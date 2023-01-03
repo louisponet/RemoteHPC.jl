@@ -94,8 +94,20 @@ function setup_core_api!(router::HTTP.Router, s::ServerData)
     HTTP.register!(router, "PUT", "/server/check_connections", req -> check_connections!(s))
 end
 
-submit_job(req, channel) = put!(channel, path(req))
-
+function submit_job(req, queue::Queue, channel)
+    jdir = path(req)
+    lock(queue) do q
+        if !haskey(q.full_queue, jdir)
+            error("No Job is present at $jdir.")
+        else
+            q.full_queue[jdir].state = Submitted
+        end
+    end
+    p = HTTP.queryparams(URI(req.target))
+    priority = haskey(p, "priority") ? parse(Int, p["priority"]) : DEFAULT_PRIORITY
+    put!(channel, jdir => priority)
+end 
+        
 function get_job(req::HTTP.Request, queue::Queue)
     job_dir = path(req)
     info = get(queue.info.current_queue, job_dir, nothing)
@@ -182,15 +194,14 @@ function abort(req::HTTP.Request, queue::Queue, sched::Scheduler)
     jdir = path(req)
     j = get(queue.info.current_queue, jdir, nothing)
     if j === nothing
-        jid = findfirst(x->x == jdir, queue.info.submit_queue)
-        if jid === nothing
-            error("No Job is running at $jdir.")
-        else
+        if haskey(queue.info.submit_queue, jdir)
             lock(queue) do q
-                deleteat!(q.submit_queue, jid)
+                delete!(q.submit_queue, jdir)
                 q.full_queue[jdir].state = Cancelled
             end
             return 0
+        else
+            error("No Job is running or submitted at $jdir.")
         end
     else
         abort(sched, j.id)
@@ -204,9 +215,24 @@ function abort(req::HTTP.Request, queue::Queue, sched::Scheduler)
     end
 end
 
+function priority!(req::HTTP.Request, queue::Queue)
+    jdir = path(req)
+    if haskey(queue.info.submit_queue, jdir) 
+        p = HTTP.queryparams(URI(req.target))
+        priority = haskey(p, "priority") ? parse(Int, p["priority"]) : DEFAULT_PRIORITY
+        lock(queue) do q
+            q.submit_queue[jdir] = priority
+        end
+        return priority
+    else
+        error("Job at $jdir not in submission queue.")
+    end
+end
+
 function setup_job_api!(router::HTTP.Router, s::ServerData)
     HTTP.register!(router, "POST", "/job/", (req) -> save_job(req, s.queue, s.server.scheduler))
-    HTTP.register!(router, "PUT", "/job/", (req) -> submit_job(req, s.submit_channel))
+    HTTP.register!(router, "PUT", "/job/", (req) -> submit_job(req, s.queue, s.submit_channel))
+    HTTP.register!(router, "PUT", "/job/priority", (req) -> priority!(req, s.queue))
     HTTP.register!(router, "GET", "/job/", (req) -> get_job(req, s.queue))
     HTTP.register!(router, "GET", "/jobs/state",
                    (req) -> get_jobs(JSON3.read(req.body, JobState), s.queue))
