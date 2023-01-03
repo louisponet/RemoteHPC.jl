@@ -187,7 +187,8 @@ function handle_job_submission!(s::ServerData)
     to_submit = s.queue.info.submit_queue
     njobs = length(s.queue.info.current_queue)
     while !isempty(s.submit_channel)
-        enqueue!(to_submit, take!(s.submit_channel))
+        jobdir,priority = take!(s.submit_channel)
+        to_submit[jobdir] = priority
     end
     n_submit = min(s.server.max_concurrent_jobs - njobs, length(to_submit))
     submitted = 0
@@ -213,7 +214,7 @@ function handle_job_submission!(s::ServerData)
                 end
             end
             if curtries != -1
-                enqueue!(to_submit, job_dir => priority + 1)
+                to_submit[job_dir] = priority + 1
             end
         else
             @warnv 2 "Submission job at dir: $job_dir is not a directory." logtype=RuntimeLog
