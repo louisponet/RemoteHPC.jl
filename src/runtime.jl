@@ -357,7 +357,7 @@ function julia_main(;verbose=0)::Cint
                                                      RuntimeLogger(),
                                                      GenericLogger()))))
     with_logger(logger) do
-        LoggingExtras.withlevel(Debug; verbosity=verbose) do
+        LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=verbose) do
             try
                 # initialize_config_dir()
                 s = local_server()

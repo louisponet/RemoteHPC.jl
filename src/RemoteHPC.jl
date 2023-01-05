@@ -47,6 +47,7 @@ include("io.jl")
 
 @precompile_all_calls begin
     s = local_server()
+    isalive(local_server())
     t = "asdfe"
     t2 = "edfasdf"
     e = Exec(; name = t2, path = "srun")

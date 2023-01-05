@@ -9,6 +9,7 @@ using RemoteHPC.BinaryTraits
 end
 
 tconfdir = tempname()
+# tconfdir = "/tmp/remotehpc"
 if ispath(tconfdir)
     rm(tconfdir; recursive = true)
 end

@@ -35,7 +35,7 @@ TimeBufferedFileLogger(p::String; interval = 10.0) = TimeBufferedFileLogger(p, I
 function Logging.handle_message(logger::TimeBufferedFileLogger, level::LogLevel, message, _module, group, id,
                         filepath, line; kwargs...)
     @nospecialize
-    msglines = eachsplit(chomp(convert(String, string(message))::String), '\n')
+    msglines = split(chomp(convert(String, string(message))::String), '\n')
     msg1, rest = Iterators.peel(msglines)
     curt = time()
     dt = curt - logger.last_write
