@@ -33,6 +33,7 @@ end
 
 const DEFAULT_PRIORITY = 5
 
+include("utils.jl")
 include("logging.jl")
 
 include("database.jl")
@@ -63,7 +64,8 @@ include("io.jl")
     rm(e)
 end
 
-export Server, start, restart, local_server, isalive, load, save, submit, abort, state, configure, priority!
+
+export Server, start, restart, local_server, isalive, load, save, submit, abort, state, configure, priority!, check_connections
 export Calculation, Environment, Exec, HQ, Slurm, Bash
 export exec
 

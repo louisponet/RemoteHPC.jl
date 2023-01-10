@@ -307,7 +307,7 @@ function Base.read(s::Server, path::String, type = nothing)
     if islocal(s)
         return type === nothing ? read(path) : read(path, type)
     else
-        resp = HTTP.get(s, URI(path="/read/", query = Dict("path" =>path)))
+        resp = HTTP.get(s, URI(path="/read/", query = Dict("path" =>path)), timeout=60)
         t = JSON3.read(resp.body, Vector{UInt8})
         return type === nothing ? t : type(t)
     end
@@ -532,16 +532,16 @@ function HTTP.request(method::String, s::Server, url, body; kwargs...)
                         kwargs...)
 end
 
-function HTTP.request(method::String, s::Server, url, body::Vector{UInt8}; kwargs...)
+function HTTP.request(method::String, s::Server, url, body::Vector{UInt8}; timeout=2, kwargs...)
     header = ["USER-UUID" => s.uuid]
-    return HTTP.request(method, http_uri(s, url), header, body; kwargs...)
+    return @timeout timeout HTTP.request(method, http_uri(s, url), header, body; kwargs...)
 end
 
-function HTTP.request(method::String, s::Server, url; connect_timeout = 1, retries = 2,
+function HTTP.request(method::String, s::Server, url; timeout=2, connect_timeout = 1, retries = 2,
                       kwargs...)
     header = ["USER-UUID" => s.uuid]
 
-    return HTTP.request(method, http_uri(s, url), header;
+    return @timeout timeout HTTP.request(method, http_uri(s, url), header;
                         connect_timeout = connect_timeout, retries = retries, kwargs...)
 end
 

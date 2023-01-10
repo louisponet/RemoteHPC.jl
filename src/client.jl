@@ -94,9 +94,15 @@ function start(s::Server; verbose=0)
         @debug "Saving updated server info..."
         save(s)
     end
-    HTTP.put(LOCAL_SERVER[], URI(path="/server/check_connections"))
-    while isalive(LOCAL_SERVER[]) && !isalive(s)
-        sleep(0.1)
+    if islocal(s)
+        while !isalive(s)
+            sleep(0.1)
+        end
+    else
+        check_connections(; names=[s.name])
+        while !isalive(s)
+            sleep(0.1)
+        end
     end
     return s
 end
@@ -110,7 +116,7 @@ function Base.kill(s::Server)
     HTTP.put(s, URI(path="/server/kill"))
     destroy_tunnel(s)
     if !islocal(s)
-        HTTP.put(LOCAL_SERVER[], URI(path="/server/check_connections"))
+        check_connections(names=[s.name])
     end
     while isalive(s)
         sleep(0.1)
@@ -141,7 +147,9 @@ the return is `false`.
 function isalive(s::Server)
     if islocal(s)
         try
-            return HTTP.get(s, URI(path="/isalive/"); connect_timeout = 2, retries = 2) !== nothing
+            return suppress() do
+                HTTP.get(s, URI(path="/isalive/"); connect_timeout = 2, retries = 2) !== nothing
+            end
         catch
             return false
         end
@@ -150,6 +158,16 @@ function isalive(s::Server)
             error("Local server not running. Use `start(local_server())` first.")
         end
         return JSON3.read(HTTP.get(LOCAL_SERVER[], URI(path="/isalive/$(s.name)"); connect_timeout = 2, retries = 2).body, Bool)
+    end
+end
+
+function check_connections(; names=[])
+    if isempty(names)
+        return HTTP.put(LOCAL_SERVER[], URI(path="/server/check_connections"), timeout = 60)
+    else
+        for n in names
+            return HTTP.put(LOCAL_SERVER[], URI(path="/server/check_connections/$n"), timeout = 60)
+        end
     end
 end
 

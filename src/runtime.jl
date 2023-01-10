@@ -264,20 +264,33 @@ function AuthHandler(handler, user_uuid::UUID)
     end
 end
 
-function check_connections!(connections)
-    for n in keys(connections)
-        !exists(Server(name=n)) && continue
-        s = load(Server(n))
-        if s.domain == "localhost"
+function check_connections!(connections, verify_tunnels; names=keys(connections))
+    for (n, connected) in connections
+        if !exists(Server(name=n))
+            pop!(connections, n)
             continue
         end
-        @debugv 1 "Checking $n connectivity." logtype=RuntimeLog
-        tsk = Threads.@spawn try
-            return HTTP.get(s, URI(path="/isalive"))  !== nothing
+        !(n in names) && continue
+        s = load(Server(n))
+        s.domain == "localhost" && continue
+        
+        try
+            connections[n] = HTTP.get(s, URI(path="/isalive")) !== nothing
         catch
-            t = find_tunnel(s)
-            if t === nothing
-                # Tunnel was dead -> create one and try again
+            connections[n] = false
+        end
+        @debugv 1 "Connection to $n: $(connections[n])" logtype=RuntimeLog
+    end
+    if verify_tunnels
+        @debugv 1 "Verifying tunnels" logtype=RuntimeLog
+        for (n, connected) in connections
+            connected && continue
+            !(n in names) && continue
+            s = load(Server(n))
+            s.domain == "localhost" && continue
+            
+            connections[n] = @timeout 30 begin 
+                destroy_tunnel(s)
                 try
                     remote_server = load_config(s.username, s.domain, config_path(s))
                     remote_server === nothing && return false
@@ -285,59 +298,27 @@ function check_connections!(connections)
                     sleep(2)
                     s.uuid = remote_server.uuid
                     try
-                        if HTTP.get(s, URI(path="/isalive")) !== nothing
-                            save(s)
-                            return true
-                        end
+                        
+                        HTTP.get(s, URI(path="/isalive"), timeout=10) !== nothing
+                        save(s)
+                        @debugv 1 "Connected to $n" logtype=RuntimeLog
+                        return true
                     catch
-                        # Still no connection -> destroy tunnel because server dead
                         destroy_tunnel(s)
                         return false
                     end
-                catch
+                catch err
+                    log_error(err, logtype=RuntimeLog)
                     destroy_tunnel(s)
                     return false
                 end
-            else
-                # Tunnel existed but no connection -> server dead
-                destroy_tunnel(s)
-                return false
-            end
-        end
-        retries = 0
-        while !istaskdone(tsk) && retries < 300
-            sleep(0.1)
-            retries += 1
-        end
-        if retries == 300
-            destroy_tunnel(s)
-            try
-                Base.throwto(tsk, InterruptException())
-            catch
-                nothing
-            end
-            if connections[n]
-                @debugv 1 "Lost connection to $n." logtype=RuntimeLog
-            end
-            connections[n] = false
-        elseif istaskfailed(tsk)
-            destroy_tunnel(s)
-            if connections[n]
-                @debugv 1 "Lost connection to $n." logtype=RuntimeLog
-            end
-            connections[n] = false
-        else
-            connection = fetch(tsk)
-            if connection != connections[n]
-                @debugv 1 "Connected to $n." logtype=RuntimeLog
-            end
-            connections[n] = connection
+            end false
         end
     end
     return connections
 end
 
-function check_connections!(server_data::ServerData)
+function check_connections!(server_data::ServerData, args...; kwargs...)
     all_servers = load(Server(""))
     for k in filter(x-> !(x in all_servers), keys(server_data.connections))
         delete!(server_data.connections, k)
@@ -346,16 +327,16 @@ function check_connections!(server_data::ServerData)
         n == server_data.server.name && continue
         server_data.connections[n] = get(server_data.connections, n, false)
     end
-    conn = check_connections!(server_data.connections)
-    @debugv 0 "Connections: $(server_data.connections)" logtype=RuntimeLog
+    conn = check_connections!(server_data.connections, args...; kwargs...)
+    @debugv 1 "Connections: $(server_data.connections)" logtype=RuntimeLog
     return conn
 end
     
 function julia_main(;verbose=0)::Cint
     logger = TimestampLogger(TeeLogger(HTTPLogger(),
-                                       NotHTTPLogger(TeeLogger(RESTLogger(),
-                                                     RuntimeLogger(),
-                                                     GenericLogger()))))
+                                   NotHTTPLogger(TeeLogger(RESTLogger(),
+                                                 RuntimeLogger(),
+                                                 GenericLogger()))))
     with_logger(logger) do
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=verbose) do
             try
@@ -367,7 +348,7 @@ function julia_main(;verbose=0)::Cint
                 server_data = ServerData(server=s)
 
                 @debug "Checking connections..." logtype=RuntimeLog
-                check_connections!(server_data)
+                check_connections!(server_data, false)
 
                 @debug "Setting up Router" logtype=RuntimeLog
 
@@ -388,6 +369,7 @@ function julia_main(;verbose=0)::Cint
                                   "0.0.0.0", port, server = server)
                 save(s)
                 while !server_data.stop
+                    check_connections!(server_data, false)
                     sleep(1)
                 end
                 @debug "Shutting down server"
