@@ -15,13 +15,13 @@ end
 
 macro timeout(seconds, expr, err_expr=:(nothing))
     esc(quote
-        tsk = @task $expr
-        schedule(tsk)
-        Base.Timer($seconds) do timer
-            istaskdone(tsk) || Base.throwto(tsk, InterruptException())
+        tsk__ = @task $expr
+        schedule(tsk__)
+        Base.Timer($seconds) do timer__
+            istaskdone(tsk__) || Base.throwto(tsk__, InterruptException())
         end
         try
-            fetch(tsk)
+            fetch(tsk__)
         catch err__
             if err__.task.exception isa InterruptException
                 RemoteHPC.log_error(RemoteHPC.StallException(err__))
