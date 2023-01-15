@@ -18,7 +18,7 @@ macro timeout(seconds, expr, err_expr=:(nothing))
         tsk__ = @task $expr
         schedule(tsk__)
         Base.Timer($seconds) do timer__
-            istaskdone(tsk__) || Base.throwto(tsk__, InterruptException())
+            tsk__ !== nothing && (istaskdone(tsk__) || Base.throwto(tsk__, InterruptException()))
         end
         try
             fetch(tsk__)

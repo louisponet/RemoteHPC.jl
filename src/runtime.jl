@@ -227,7 +227,7 @@ function requestHandler(handler, s::ServerData)
     return function f(req)
         start = Dates.now()
         @debugv 2 "BEGIN - $(req.method) - $(req.target)" logtype=RESTLog
-        local resp
+        resp = HTTP.Response(404)
         try
             obj = handler(req)
             if obj === nothing
@@ -254,10 +254,7 @@ function AuthHandler(handler, user_uuid::UUID)
         if HTTP.hasheader(req, "USER-UUID")
             uuid = HTTP.header(req, "USER-UUID")
             if UUID(uuid) == user_uuid
-                t = ThreadPools.spawnbg() do
-                    return handler(req)
-                end
-                return fetch(t)
+                return handler(req)
             end
         end
         return HTTP.Response(401, "unauthorized")
@@ -299,7 +296,7 @@ function check_connections!(connections, verify_tunnels; names=keys(connections)
                     s.uuid = remote_server.uuid
                     try
                         
-                        HTTP.get(s, URI(path="/isalive"), timeout=10) !== nothing
+                        HTTP.get(s, URI(path="/isalive")) !== nothing
                         save(s)
                         @debugv 1 "Connected to $n" logtype=RuntimeLog
                         return true
@@ -365,7 +362,7 @@ function julia_main(;verbose=0)::Cint
                     log_error(e, logtype=RuntimeLog)
                 end
                 @debug "Starting RESTAPI - HOST $(gethostname()) - USER $(get(ENV, "USER", "unknown_user"))" logtype=RuntimeLog 
-                @async HTTP.serve(router |> x -> requestHandler(x, server_data) |> x -> AuthHandler(x, UUID(s.uuid)),
+                Threads.@spawn HTTP.serve(router |> x -> requestHandler(x, server_data) |> x -> AuthHandler(x, UUID(s.uuid)),
                                   "0.0.0.0", port, server = server)
                 save(s)
                 while !server_data.stop
