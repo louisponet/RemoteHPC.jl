@@ -250,11 +250,19 @@ function requestHandler(handler, s::ServerData)
 end
 
 function AuthHandler(handler, user_uuid::UUID)
+    n = 0
     return function f(req)
         if HTTP.hasheader(req, "USER-UUID")
             uuid = HTTP.header(req, "USER-UUID")
             if UUID(uuid) == user_uuid
-                return handler(req)
+                n += 1
+                t = ThreadPools.spawnbg() do
+                    return handler(req)
+                end
+                while !istaskdone(t)
+                    yield()
+                end
+                return fetch(t)
             end
         end
         return HTTP.Response(401, "unauthorized")
@@ -362,15 +370,16 @@ function julia_main(;verbose=0)::Cint
                     log_error(e, logtype=RuntimeLog)
                 end
                 @debug "Starting RESTAPI - HOST $(gethostname()) - USER $(get(ENV, "USER", "unknown_user"))" logtype=RuntimeLog 
-                Threads.@spawn HTTP.serve(router |> x -> requestHandler(x, server_data) |> x -> AuthHandler(x, UUID(s.uuid)),
+                @async HTTP.serve(router |> x -> requestHandler(x, server_data) |> x -> AuthHandler(x, UUID(s.uuid)),
                                   "0.0.0.0", port, server = server)
                 save(s)
-                while !server_data.stop
+                t2 = @tspawnat min(Threads.nthreads(), 3) while !server_data.stop
                     check_connections!(server_data, false)
                     sleep(1)
                 end
                 @debug "Shutting down server"
                 fetch(t)
+                fetch(t2)
                 close(server)
                 return 0
             catch e
