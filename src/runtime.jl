@@ -208,6 +208,10 @@ function handle_job_submission!(s::ServerData)
                 catch e
                     curtries += 1
                     sleep(s.sleep_time)
+                    lock(s.queue) do q
+                        q.full_queue[job_dir] = Job(-1, SubmissionError)
+                    end
+                    
                     with_logger(FileLogger(joinpath(job_dir, "submission.err"), append=true)) do
                         log_error(e)
                     end

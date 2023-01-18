@@ -35,7 +35,6 @@ const DEFAULT_PRIORITY = 5
 
 include("utils.jl")
 include("logging.jl")
-
 include("database.jl")
 
 include("types.jl")
@@ -72,7 +71,7 @@ export exec
 const LOCAL_SERVER = Ref{Server}()
 
 function __init__()
-    LOCAL_SERVER[] = local_server()
+    @async LOCAL_SERVER[] = local_server()
     init_traits(@__MODULE__)
 end
 

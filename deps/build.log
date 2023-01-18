@@ -1,9 +1,0 @@
-  Activating project at `~/.julia/config/RemoteHPC`
-    Updating registry at `~/.julia/registries/General.toml`
-   Resolving package versions...
-   Installed RemoteHPC ─ v0.2.9
-    Updating `~/.julia/config/RemoteHPC/Project.toml`
-  [c4f2a1c4] ~ RemoteHPC v0.1.5 `~/.julia/dev/RemoteHPC` ⇒ v0.2.9
-    Updating `~/.julia/config/RemoteHPC/Manifest.toml`
-  [c4f2a1c4] ~ RemoteHPC v0.1.5 `~/.julia/dev/RemoteHPC` ⇒ v0.2.9
-    Building RemoteHPC → `~/.julia/scratchspaces/44cfe95a-1eb2-52ea-b672-e2afdf69b78f/fb36672d89de2c676e40f0f09f6e972171f6c12b/build.log`
