@@ -1,23 +1,5 @@
-function path(req::HTTP.Request)
-    p = URI(req.target)
-    return HTTP.queryparams(p)["path"]
-end
-
-get_server_config(req)          = local_server()
-api_ispath(req::HTTP.Request)   = ispath(path(req))
-api_read(req::HTTP.Request)     = read(path(req))
-api_write(req::HTTP.Request)    = write(path(req), req.body)
-api_rm(req::HTTP.Request)       = rm(path(req); recursive = true)
-api_symlink(req::HTTP.Request)  = symlink(JSON3.read(req.body, Vector{String})...)
-api_readdir(req::HTTP.Request)  = readdir(path(req))
-api_mtime(req::HTTP.Request)    = mtime(path(req))
-api_filesize(req::HTTP.Request) = filesize(path(req))
-api_realpath(req::HTTP.Request) = realpath(path(req))
-api_mkpath(req::HTTP.Request)   = mkpath(path(req))
-api_cp(req::HTTP.Request)       = cp(JSON3.read(req.body, Tuple{String, String})...; force=true)
-
-function execute_function(req::HTTP.Router)
-    funcstr = Meta.parse(path(req))
+function execute_function(req::HTTP.Request)
+    funcstr = Meta.parse(queryparams(req)["path"])
     func = eval(funcstr)
     args = []
     for (t, a) in JSON3.read(req.body, Vector)
@@ -29,8 +11,7 @@ function execute_function(req::HTTP.Router)
 end
 
 function get_info(req, s::ServerData)
-    uri = URI(req.target)
-    query = HTTP.queryparams(uri)
+    query = queryparams(req)
     out = []
     
     if !haskey(query, "info")
@@ -49,7 +30,6 @@ function get_info(req, s::ServerData)
 end
 
 function server_config!(req, s::ServerData)
-    uri = URI(req.target)
     splt = splitpath(req.target)
     if splt[4] == "sleep_time"
         return s.sleep_time = parse(Float64, splt[5])
@@ -62,7 +42,6 @@ function server_config!(req, s::ServerData)
 end
 function server_config(req, s::ServerData)
     server = s.server
-    uri = URI(req.target)
     splt = splitpath(req.target)
     if length(splt) == 3
         return server
@@ -71,32 +50,35 @@ function server_config(req, s::ServerData)
     end
 end
 
-function setup_core_api!(router::HTTP.Router, s::ServerData)
-    HTTP.register!(router, "PUT", "/server/kill", (req) -> (s.stop = true))
-    HTTP.register!(router, "GET", "/info/", res -> get_info(res, s))
-    HTTP.register!(router, "GET", "/isalive/", (res) -> true)
-    HTTP.register!(router, "GET", "/isalive/*", (res) -> (n = splitpath(res.target)[end]; haskey(s.connections, n) && s.connections[n]))
-    HTTP.register!(router, "GET", "/ispath/", api_ispath)
-    HTTP.register!(router, "GET", "/realpath/", api_realpath)
-    HTTP.register!(router, "GET", "/read/", api_read)
-    HTTP.register!(router, "GET", "/readdir/", api_readdir)
-    HTTP.register!(router, "GET", "/mtime/", api_mtime)
-    HTTP.register!(router, "GET", "/filesize/", api_filesize)
-    HTTP.register!(router, "GET", "/api/**", execute_function)
-    HTTP.register!(router, "POST", "/write/", api_write)
-    HTTP.register!(router, "POST", "/rm/", api_rm)
-    HTTP.register!(router, "POST", "/symlink/", api_symlink)
-    HTTP.register!(router, "POST", "/mkpath/", api_mkpath)
-    HTTP.register!(router, "POST", "/cp/", api_cp)
-    HTTP.register!(router, "POST", "/server/config/*", req -> server_config!(req, s))
-    HTTP.register!(router, "GET", "/server/config/**", req -> server_config(req, s))
-    HTTP.register!(router, "GET", "/server/config", req -> server_config(req, s))
-    HTTP.register!(router, "PUT", "/server/check_connections", req -> check_connections!(s, true))
-    HTTP.register!(router, "PUT", "/server/check_connections/*", req -> check_connections!(s, true; names=[splitpath(req.target)[end]]))
+function setup_core_api!(s::ServerData)
+    @put  "/server/kill" req -> (s.stop = true;terminate())
+    @get  "/info/"       req -> get_info(req, s)
+    @get  "/isalive/"    req -> true
+    @get  "/isalive/*"   req -> (n = splitpath(req.target)[end]; haskey(s.connections, n) && s.connections[n])
+    @get  "/api/**"      execute_function
+    
+    @get  "/ispath/"     req -> (p = queryparams(req)["path"]; ispath(p))
+    @get  "/read/"       req -> (p = queryparams(req)["path"]; read(p))
+    @post "/write/"      req -> (p = queryparams(req)["path"]; write(p, req.body))
+    @post "/rm/"         req -> (p = queryparams(req)["path"]; rm(p; recursive = true))
+    @get  "/readdir/"    req -> (p = queryparams(req)["path"]; readdir(p))
+    @get  "/mtime/"      req -> (p = queryparams(req)["path"]; mtime(p))
+    @get  "/filesize/"   req -> (p = queryparams(req)["path"]; filesize(p))
+    @get  "/realpath/"   req -> (p = queryparams(req)["path"]; realpath(p))
+    @post "/mkpath/"     req -> (p = queryparams(req)["path"]; mkpath(p))
+    @post "/symlink/"    req -> symlink(JSON3.read(req.body, Vector{String})...)
+    @post "/cp/"         req -> cp(JSON3.read(req.body, Tuple{String, String})...; force=true)
+    
+    @post "/server/config/*"  req -> server_config!(req, s)
+    @get  "/server/config/**" req -> server_config(req, s)
+    @get  "/server/config"    req -> local_server()
+    @put  "/server/check_connections"   req -> check_connections!(s, get(queryparams(req), "verify_tunnels", false))
+    @put  "/server/check_connections/*" req -> check_connections!(s, get(queryparams(req), "verify_tunnels", true); names=[splitpath(req.target)[end]])
 end
 
 function submit_job(req, queue::Queue, channel)
-    jdir = path(req)
+    p = queryparams(req)
+    jdir = p["path"]
     lock(queue) do q
         if !haskey(q.full_queue, jdir)
             error("No Job is present at $jdir.")
@@ -104,13 +86,13 @@ function submit_job(req, queue::Queue, channel)
             q.full_queue[jdir].state = Submitted
         end
     end
-    p = HTTP.queryparams(URI(req.target))
     priority = haskey(p, "priority") ? parse(Int, p["priority"]) : DEFAULT_PRIORITY
     put!(channel, jdir => priority)
 end 
         
 function get_job(req::HTTP.Request, queue::Queue)
-    job_dir = path(req)
+    p = queryparams(req)
+    job_dir = p["path"]
     info = get(queue.info.current_queue, job_dir, nothing)
     if info === nothing
         info = get(queue.info.full_queue, job_dir, nothing)
@@ -174,7 +156,7 @@ function get_jobs(dirfuzzy::AbstractString, queue::Queue)
 end
 
 function save_job(req::HTTP.Request, args...)
-    return save_job(path(req),
+    return save_job(queryparams(req)["path"],
                     JSON3.read(req.body, Tuple{String,Environment,Vector{Calculation}}),
                     args...)
 end
@@ -192,7 +174,7 @@ function save_job(dir::AbstractString, job_info::Tuple, queue::Queue, sched::Sch
 end
 
 function abort(req::HTTP.Request, queue::Queue, sched::Scheduler)
-    jdir = path(req)
+    jdir = queryparams(req)["path"]
     j = get(queue.info.current_queue, jdir, nothing)
     if j === nothing
         if haskey(queue.info.submit_queue, jdir)
@@ -217,9 +199,9 @@ function abort(req::HTTP.Request, queue::Queue, sched::Scheduler)
 end
 
 function priority!(req::HTTP.Request, queue::Queue)
-    jdir = path(req)
+    p = queryparams(req)
+    jdir = p["path"]
     if haskey(queue.info.submit_queue, jdir) 
-        p = HTTP.queryparams(URI(req.target))
         priority = haskey(p, "priority") ? parse(Int, p["priority"]) : DEFAULT_PRIORITY
         lock(queue) do q
             q.submit_queue[jdir] = priority
@@ -230,21 +212,18 @@ function priority!(req::HTTP.Request, queue::Queue)
     end
 end
 
-function setup_job_api!(router::HTTP.Router, s::ServerData)
-    HTTP.register!(router, "POST", "/job/", (req) -> save_job(req, s.queue, s.server.scheduler))
-    HTTP.register!(router, "PUT", "/job/", (req) -> submit_job(req, s.queue, s.submit_channel))
-    HTTP.register!(router, "PUT", "/job/priority", (req) -> priority!(req, s.queue))
-    HTTP.register!(router, "GET", "/job/", (req) -> get_job(req, s.queue))
-    HTTP.register!(router, "GET", "/jobs/state",
-                   (req) -> get_jobs(JSON3.read(req.body, JobState), s.queue))
-    HTTP.register!(router, "GET", "/jobs/fuzzy",
-                   (req) -> get_jobs(JSON3.read(req.body, String), s.queue))
-    return HTTP.register!(router, "POST", "/abort/",
-                          (req) -> abort(req, s.queue, s.server.scheduler))
+function setup_job_api!(s::ServerData)
+    @post "/job/"         req -> save_job(req, s.queue, s.server.scheduler)
+    @put  "/job/"         req -> submit_job(req, s.queue, s.submit_channel)
+    @put  "/job/priority" req -> priority!(req, s.queue)
+    @get  "/job/"         req -> get_job(req, s.queue)
+    @get  "/jobs/state"   req -> get_jobs(JSON3.read(req.body, JobState), s.queue)
+    @get  "/jobs/fuzzy"   req -> get_jobs(JSON3.read(req.body, String), s.queue)
+    @post "/abort/"       req -> abort(req, s.queue, s.server.scheduler)
 end
 
 function load(req::HTTP.Request)
-    p = config_path("storage", path(req))
+    p = config_path("storage", queryparams(req)["path"])
     if isdir(p)
         return map(x -> splitext(x)[1], readdir(p))
     else
@@ -256,19 +235,19 @@ function load(req::HTTP.Request)
 end
 
 function save(req::HTTP.Request)
-    p = config_path("storage", path(req))
+    p = config_path("storage", queryparams(req)["path"])
     mkpath(splitdir(p)[1])
     write(p * ".json", req.body)
 end
 
 function database_rm(req)
-    p = config_path("storage", path(req)) * ".json"
+    p = config_path("storage", queryparams(req)["path"]) * ".json"
     ispath(p)
     return rm(p)
 end
 
-function setup_database_api!(router)
-    HTTP.register!(router, "GET", "/storage/", load)
-    HTTP.register!(router, "POST", "/storage/", save)
-    HTTP.register!(router, "PUT", "/storage/", database_rm)
+function setup_database_api!()
+    @get  "/storage/" req -> load(req)
+    @post "/storage/" req -> save(req)
+    @put  "/storage/" req -> database_rm(req)
 end

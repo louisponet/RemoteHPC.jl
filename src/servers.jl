@@ -380,8 +380,11 @@ function julia_cmd(s::Server, cmd::String)
 end
 
 ssh_string(s::Server) = s.username * "@" * s.domain
-function http_uri(s::Server, uri = HTTP.URI())
-    return HTTP.URI(uri, scheme="http", port=s.port, host = "localhost")
+function http_uri(s::Server, uri::URI = URI())
+    return URI(uri, scheme="http", port=s.port, host = "localhost")
+end
+function http_uri(s::Server, uri::AbstractString)
+    return URI(URI(uri), scheme="http", port=s.port, host = "localhost")
 end
 
 function Base.rm(s::Server)

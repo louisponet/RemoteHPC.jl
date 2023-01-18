@@ -136,7 +136,7 @@ function main_loop(s::ServerData)
         end
         sleep(s.sleep_time)
     end
-    Threads.@spawn while !s.stop
+    while !s.stop
         # monitor_issues(log_mtimes)
         try
             log_info(s)
@@ -231,19 +231,7 @@ function requestHandler(handler, s::ServerData)
     return function f(req)
         start = Dates.now()
         @debugv 2 "BEGIN - $(req.method) - $(req.target)" logtype=RESTLog
-        resp = HTTP.Response(404)
-        try
-            obj = handler(req)
-            if obj === nothing
-                resp = HTTP.Response(204)
-            elseif obj isa HTTP.Response
-                return obj
-            else
-                resp = HTTP.Response(200, JSON3.write(obj))
-            end
-        catch e
-            resp = HTTP.Response(500, log_error(e))
-        end
+        resp = handler(req)
         stop = Dates.now()
         @debugv 2 "END - $(req.method) - $(req.target) - $(resp.status) - $(Dates.value(stop - start)) - $(length(resp.body))" logtype=RESTLog
         lock(s.lock)
@@ -254,13 +242,11 @@ function requestHandler(handler, s::ServerData)
 end
 
 function AuthHandler(handler, user_uuid::UUID)
-    n = 0
     return function f(req)
         if HTTP.hasheader(req, "USER-UUID")
             uuid = HTTP.header(req, "USER-UUID")
             if UUID(uuid) == user_uuid
-                n += 1
-                t = ThreadPools.spawnbg() do
+                t = ThreadPools.spawnbg() do 
                     return handler(req)
                 end
                 while !istaskdone(t)
@@ -349,7 +335,6 @@ function julia_main(;verbose=0)::Cint
     with_logger(logger) do
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=verbose) do
             try
-                # initialize_config_dir()
                 s = local_server()
                 port, server = listenany(ip"0.0.0.0", 8080)
                 s.port = port
@@ -361,30 +346,25 @@ function julia_main(;verbose=0)::Cint
 
                 @debug "Setting up Router" logtype=RuntimeLog
 
-                router = HTTP.Router()
-                setup_core_api!(router, server_data)
-                setup_job_api!(router, server_data)
-                setup_database_api!(router)
+                setup_core_api!(server_data)
+                setup_job_api!(server_data)
+                setup_database_api!()
+                repeat = router("/repeat", interval=1.0, tags=["repeat"])
+                @get repeat("/check_connections") () -> check_connections!(server_data, false)
                 
                 @debug "Starting main loop" logtype=RuntimeLog
 
-                t = @tspawnat min(Threads.nthreads(), 2) try
+                t = Threads.@spawn try
                     main_loop(server_data)
                 catch e
                     log_error(e, logtype=RuntimeLog)
                 end
                 @debug "Starting RESTAPI - HOST $(gethostname()) - USER $(get(ENV, "USER", "unknown_user"))" logtype=RuntimeLog 
-                @async HTTP.serve(router |> x -> requestHandler(x, server_data) |> x -> AuthHandler(x, UUID(s.uuid)),
-                                  "0.0.0.0", port, server = server)
                 save(s)
-                t2 = @tspawnat min(Threads.nthreads(), 3) while !server_data.stop
-                    check_connections!(server_data, false)
-                    sleep(1)
-                end
+                serve(middleware = [x -> requestHandler(x, server_data), x -> AuthHandler(x, UUID(s.uuid))],
+                                  host="0.0.0.0", port=Int(port), server = server, access_log=nothing)
                 @debug "Shutting down server"
                 fetch(t)
-                fetch(t2)
-                close(server)
                 return 0
             catch e
                 log_error(e)

@@ -18,6 +18,9 @@ using Pkg
 using InteractiveUtils
 using BinaryTraits
 using DataStructures
+using Oxygen
+using SwaggerMarkdown
+
 
 const CONFIG_DIR = occursin("cache", first(Base.DEPOT_PATH)) ?
                    abspath(Base.DEPOT_PATH[2], "config", "RemoteHPC") :
@@ -71,7 +74,7 @@ export exec
 const LOCAL_SERVER = Ref{Server}()
 
 function __init__()
-    @async LOCAL_SERVER[] = local_server()
+    LOCAL_SERVER[] = local_server()
     init_traits(@__MODULE__)
 end
 
