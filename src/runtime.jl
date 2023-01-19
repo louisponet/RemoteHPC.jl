@@ -231,7 +231,19 @@ function requestHandler(handler, s::ServerData)
     return function f(req)
         start = Dates.now()
         @debugv 2 "BEGIN - $(req.method) - $(req.target)" logtype=RESTLog
-        resp = handler(req)
+        resp = HTTP.Response(404)
+        try
+            obj = handler(req)
+            if obj === nothing
+                resp = HTTP.Response(204)
+            elseif obj isa HTTP.Response
+                return obj
+            else
+                resp = HTTP.Response(200, JSON3.write(obj))
+            end
+        catch e
+            resp = HTTP.Response(500, log_error(e))
+        end
         stop = Dates.now()
         @debugv 2 "END - $(req.method) - $(req.target) - $(resp.status) - $(Dates.value(stop - start)) - $(length(resp.body))" logtype=RESTLog
         lock(s.lock)
@@ -361,9 +373,13 @@ function julia_main(;verbose=0)::Cint
                 end
                 @debug "Starting RESTAPI - HOST $(gethostname()) - USER $(get(ENV, "USER", "unknown_user"))" logtype=RuntimeLog 
                 save(s)
-                serve(middleware = [x -> requestHandler(x, server_data), x -> AuthHandler(x, UUID(s.uuid))],
-                                  host="0.0.0.0", port=Int(port), server = server, access_log=nothing)
+                @async serve(middleware = [x -> requestHandler(x, server_data), x -> AuthHandler(x, UUID(s.uuid))],
+                                  host="0.0.0.0", port=Int(port), server = server, access_log=nothing, serialize=false)
                 @debug "Shutting down server"
+                while !server_data.stop
+                    sleep(1)
+                end
+                terminate()
                 fetch(t)
                 return 0
             catch e

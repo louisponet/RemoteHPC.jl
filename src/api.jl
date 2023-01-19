@@ -51,7 +51,7 @@ function server_config(req, s::ServerData)
 end
 
 function setup_core_api!(s::ServerData)
-    @put  "/server/kill" req -> (s.stop = true;terminate())
+    @put  "/server/kill" req -> (s.stop = true)
     @get  "/info/"       req -> get_info(req, s)
     @get  "/isalive/"    req -> true
     @get  "/isalive/*"   req -> (n = splitpath(req.target)[end]; haskey(s.connections, n) && s.connections[n])
