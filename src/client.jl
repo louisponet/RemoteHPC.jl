@@ -268,11 +268,7 @@ function configure()
             storable = load(server, storable)
         end
 
-        if storable_T == Server
-            storable = Server(name, true)
-        else
-            storable = configure!(storable, server)
-        end
+        storable = configure!(storable, server)
         yn_id = request("Proceed saving $storable_T with name $name to Server $(server.name)", RadioMenu(["yes", "no"]))
         if yn_id == 1
             save(server, storable)

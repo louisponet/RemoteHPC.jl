@@ -74,10 +74,34 @@ function configure_scheduler(s::Server; interactive = true)
 end
 
 function configure!(s::Server; interactive = true)
+    username = ask_input(String, "Username")
+    domain = ask_input(String, "Domain")
+    s.domain = domain
+    s.username = username
+    
     if s.domain == "localhost"
         s.julia_exec = joinpath(Sys.BINDIR, "julia")
     else
+        if server_command(username, domain, "ls").exitcode != 0
+            error("$username@$domain not reachable")
+        end
+        @debug "Trying to pull existing configuration from $username@$domain..."
+        server = load_config(username, domain, config_path(s))
         if interactive
+            if server !== nothing
+                server.name = s.name
+                server.domain = domain
+
+                change_config = request("Found remote server configuration:\n$server\nIs this correct?",
+                                        RadioMenu(["yes", "no"]))
+                change_config == -1 && return
+                if change_config == 1
+                    save(server)
+                    return server
+                else
+                    s = server
+                end
+            end
             julia = ask_input(String, "Julia executable path", s.julia_exec)
             if server_command(s.username, s.domain, "which $julia").exitcode != 0
                 yn_id = request("$julia, no such file or directory. Install julia?", RadioMenu(["yes", "no"]))
@@ -94,6 +118,11 @@ function configure!(s::Server; interactive = true)
             else
                 s.julia_exec = julia
             end
+        elseif server !== nothing
+            server.name = s.name
+            server.domain = domain
+            save(server)
+            return server
         else
             s.julia_exec = "julia"
         end
@@ -162,60 +191,8 @@ function configure_local(; interactive = true)
     return s
 end
 
-function Server(s::AbstractString; overwrite=false)
-    isempty(s) && return Server(name="")
-    t = Server(; name = s)
-    if exists(t) && !overwrite
-        return load(t)
-    elseif s == gethostname()
-        return configure_local(interactive=false)
-    end
-    # Create new server 
-    @debug "Creating new Server configuration..."
-    if occursin("@", s)
-        username, domain = split(s, "@")
-        name = ask_input(String, "Please specify the Server's identifying name")
-        if exists(Server(; name = name, username = username, domain = domain))
-            @warn "A server with $name was already configured and will be overwritten."
-        end
-    elseif s == "localhost"
-        username = get(ENV, "USER", "nouser")
-        domain = "localhost"
-        name = s
-    else
-        username = ask_input(String, "Username")
-        domain = ask_input(String, "Domain")
-        name = s
-    end
-    
-    if server_command(username, domain, "ls").exitcode != 0
-        error("$username@$domain not reachable")
-    end
-    server = Server(name=name, username=username, domain=domain)
-    @debug "Trying to pull existing configuration from $username@$domain..."
-    server = load_config(username, domain, config_path(server))
-    if server !== nothing
-        server.name = name
-        server.domain = domain
-
-        change_config = request("Found remote server configuration:\n$server\nIs this correct?",
-                                RadioMenu(["yes", "no"]))
-        change_config == -1 && return
-        if change_config == 2
-            configure!(server)
-        end
-
-    else
-        @debug "Couldn't pull server configuration, creating new..."
-        server = Server(; name = name, domain = domain, username = username)
-        configure!(server)
-    end
-    save(server)
-    return server
-end
-
 islocal(s::Server) = s.domain == "localhost"
-local_server() = Server(gethostname())
+local_server() = load(Server(name=gethostname()))
 
 function install_julia(s::Server)
     julia_tar = "julia-$VERSION-linux-x86_64.tar.gz"

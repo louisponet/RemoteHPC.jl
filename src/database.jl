@@ -32,7 +32,7 @@ Base.keys(::S) where {S<:Storable} = fieldnames(S)
 Base.getindex(e::S, i::Symbol) where {S<:Storable} = getproperty(e, i)
 Base.setindex!(e::S, i::Symbol, v) where {S<:Storable} = setproperty!(e, i)
 
-function Base.iterate(s::S, state=1) where {S}
+function Base.iterate(s::S, state=1) where {S<:Storable}
     fn = fieldnames(S)
     @inbounds if state > length(fn)
         return nothing
