@@ -66,14 +66,13 @@ function Exec(a,b,c,d,e,f)
     return Exec(a, joinpath(b, c), d, e, f)
 end
 
-Base.dirname(e::Exec) = dirname(e.path)
 exec(e::Exec) = splitpath(e.path)[end]
 
 # Backwards compatibility
 function Base.getproperty(e::Exec, name::Symbol)
     if name == :dir
         Base.depwarn("`e.dir` will be deprecated. Use `dirname(e)` instead.", :Exec)
-        return dirname(e)
+        return dirname(e.path)
     elseif name == :exec
         Base.depwarn("`e.exec` will be deprecated. Use `exec(e)` instead.", :Exec)
         return exec(e)
@@ -88,7 +87,7 @@ function Base.setproperty!(e::Exec, name::Symbol, v)
         return setfield!(e, :path, joinpath(v, exec(e)))
     elseif name == :exec
         Base.depwarn("`e.exec` will be deprecated in favor of `e.path`.", :Exec)
-        return setfield!(e, :path, joinpath(dirname(e), v))
+        return setfield!(e, :path, joinpath(dirname(e.path), v))
     else
         return getfield(e, name)
     end
@@ -123,8 +122,6 @@ end
 # Database interface
 @assign Exec with Is{Storable}
 storage_directory(::Exec) = "execs"
-
-
 
 @kwdef struct Calculation
     exec::Exec

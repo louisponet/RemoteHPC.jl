@@ -19,7 +19,7 @@ using InteractiveUtils
 using BinaryTraits
 using DataStructures
 using Oxygen
-using SwaggerMarkdown
+# using SwaggerMarkdown
 
 
 const CONFIG_DIR = occursin("cache", first(Base.DEPOT_PATH)) ?
