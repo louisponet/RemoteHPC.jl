@@ -78,6 +78,34 @@ function configure!(s::Server; interactive = true)
         s.julia_exec = joinpath(Sys.BINDIR, "julia")
     else
         if interactive
+            username = ask_input(String, "Username")
+            domain = ask_input(String, "Domain")
+            if server_command(username, domain, "ls").exitcode != 0
+                error("$username@$domain not reachable")
+            end
+
+            s = Server(name=s.name, username=username, domain=domain)
+            @debug "Trying to pull existing configuration from $username@$domain..."
+            server = load_config(username, domain, config_path(s))
+            if server !== nothing
+                
+                server.name = s.name
+                server.domain = s.domain
+
+                change_config = request("Found remote server configuration:\n$server\nIs this correct?",
+                                        RadioMenu(["yes", "no"]))
+                change_config == -1 && return
+                if change_config == 1
+                    save(server)
+                    return server
+                else
+                    s = server
+                end
+            else
+                @debug "Couldn't pull server configuration, creating new..."
+                server = Server(; name = s.name, domain = domain, username = username)
+            end
+            
             julia = ask_input(String, "Julia executable path", s.julia_exec)
             if server_command(s.username, s.domain, "which $julia").exitcode != 0
                 yn_id = request("$julia, no such file or directory. Install julia?", RadioMenu(["yes", "no"]))
@@ -163,67 +191,20 @@ function configure_local(; interactive = true)
 end
 
 function Server(s::AbstractString; overwrite=false)
-    isempty(s) && return Server(name="")
     t = Server(; name = s)
-    if exists(t) && !overwrite
-        return load(t)
-    elseif s == gethostname()
-        return configure_local(interactive=false)
-    end
-    # Create new server 
-    @debug "Creating new Server configuration..."
-    if occursin("@", s)
-        username, domain = split(s, "@")
-        name = ask_input(String, "Please specify the Server's identifying name")
-        if exists(Server(; name = name, username = username, domain = domain))
-            @warn "A server with $name was already configured and will be overwritten."
-        end
-    elseif s == "localhost"
-        username = get(ENV, "USER", "nouser")
-        domain = "localhost"
-        name = s
-    else
-        username = ask_input(String, "Username")
-        domain = ask_input(String, "Domain")
-        name = s
-    end
-    
-    if server_command(username, domain, "ls").exitcode != 0
-        error("$username@$domain not reachable")
-    end
-    server = Server(name=name, username=username, domain=domain)
-    @debug "Trying to pull existing configuration from $username@$domain..."
-    server = load_config(username, domain, config_path(server))
-    if server !== nothing
-        server.name = name
-        server.domain = domain
-
-        change_config = request("Found remote server configuration:\n$server\nIs this correct?",
-                                RadioMenu(["yes", "no"]))
-        change_config == -1 && return
-        if change_config == 2
-            configure!(server)
-        end
-
-    else
-        @debug "Couldn't pull server configuration, creating new..."
-        server = Server(; name = name, domain = domain, username = username)
-        configure!(server)
-    end
-    save(server)
-    return server
+    return isempty(s) ? t : load(t)
 end
 
 islocal(s::Server) = s.domain == "localhost"
 local_server() = Server(gethostname())
 
 function install_julia(s::Server)
-    julia_tar = "julia-$VERSION-linux-x86_64.tar.gz"
+    julia_tar = "julia-1.8.5-linux-x86_64.tar.gz"
     p = ProgressUnknown("Installing julia on Server $(s.name) ($(s.username)@$(s.domain))...")
     t = tempname()
     mkdir(t)
     next!(p, showvalues = [("step [1/3]", "downloading")])
-    download("https://julialang-s3.julialang.org/bin/linux/x64/1.8/$julia_tar",
+    download("https://julialang-s3.julialang.org/bin/linux/x64/1.8/julia-1.8.5-linux-x86_64.tar.gz",
              joinpath(t, "julia.tar.gz"))
     next!(p, showvalues = [("step [2/3]", "pushing")])
     push(joinpath(t, "julia.tar.gz"), s, julia_tar)
@@ -233,8 +214,8 @@ function install_julia(s::Server)
     server_command(s, "rm $julia_tar")
     finish!(p)
     @assert res.exitcode == 0 "Issue unpacking julia executable on cluster, please install julia manually"
-    @debug "julia installed on Server $(s.name) in ~/julia-$VERSION/bin"
-    return "~/julia-$VERSION/bin/julia"
+    @debug "julia installed on Server $(s.name) in ~/julia-1.8.5/bin"
+    return "~/julia-1.8.5/bin/julia"
 end
 
 function install_RemoteHPC(s::Server, julia_exec = s.julia_exec)
