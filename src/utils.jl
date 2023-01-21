@@ -17,14 +17,14 @@ macro timeout(seconds, expr, err_expr=:(nothing))
     esc(quote
         tsk__ = @task $expr
         schedule(tsk__)
-        start_time = time()
-        curt = time()
+        start_time__ = time()
+        curt__ = time()
         Base.Timer(0.001, interval=0.001) do timer__
             if tsk__ === nothing || istaskdone(tsk__)
                 close(timer__)
             else
-                curt = time()
-                if curt - start_time > $seconds
+                curt__ = time()
+                if curt__ - start_time__ > $seconds
                     Base.throwto(tsk__, InterruptException())
                 end
             end
