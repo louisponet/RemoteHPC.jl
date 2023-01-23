@@ -86,9 +86,9 @@ function start(s::Server; verbose=0)
     if retries == 60
         error("Something went wrong starting the server.")
     else
-        cfg = load_config(s)
-        s.port = cfg.port
-        s.uuid = cfg.uuid
+        if islocal(s)
+            s.port = load_config(s).port
+        end
         
         @debug "Daemon on Server $(s.name) started, listening on local port $(s.port)."
         @debug "Saving updated server info..."
@@ -98,7 +98,6 @@ function start(s::Server; verbose=0)
         while !isalive(s)
             sleep(0.1)
         end
-        LOCAL_SERVER[] = local_server()
     else
         check_connections(; names=[s.name])
         while !isalive(s)
@@ -236,10 +235,6 @@ end
 ask_name(::Type{S}) where {S} = ask_input(String, "Please specify a name for the new $S")
 
 function configure()
-    if !isalive(local_server())
-        @info "Local server needs to be running, starting it..."
-        start(local_server())
-    end
     @debug "Configuring (start with Servers)..."
     done = false
     while !done
@@ -247,24 +242,23 @@ function configure()
         type = request("Which kind would you like to configure?", RadioMenu(string.(storables)))
         type == -1 && return
         storable_T = storables[type]
-        @info "Configuring a $storable_T. Please read carefully the documentation first:"
-        println()
-        println()
-        display(Docs.doc(storable_T))
-        println()
-        println()
+        @debug "Configuring a $storable_T. Please read carefully the documentation first:"
+        display(Docs.doc(storable_T)) 
         name = ask_name(storable_T)
         if storable_T == Server
             server = local_server()
         else
-            servers = load(local_server(), Server(""))
+            servers = ["local"; load(local_server(), Server(""))]
             server_id = request("Where would you like to save the $storable_T?", RadioMenu(servers))
             server_id == -1 && return
-            server = Server(servers[server_id])
+            if server_id == 1
+                server = local_server()
+            else
+                server = Server(servers[server_id])
+            end
         end
         if !isalive(server)
-            @info "Server(\"$(server.name)\") is not alive, starting it first..."
-            start(server)
+            error("Server(\"$(server.name)\") is not alive, start it first")
         end
         storable = storable_T(name=name)
 
@@ -273,22 +267,19 @@ function configure()
             id < 2 && return
             storable = load(server, storable)
         end
-        try
-            if storable_T == Server
-                storable = configure!(storable)
-            else
-                storable = configure!(storable, server)
-            end
-            yn_id = request("Proceed saving $storable_T with name \"$name\" to Server(\"$(server.name)\")?", RadioMenu(["yes", "no"]))
-            if yn_id == 1
-                save(server, storable)
-            end
 
-            yn_id = request("Configure more Storables?", RadioMenu(["yes", "no"]))
-            done = yn_id == 2
-        catch err
-            @error "Try again" exception=err
+        if storable_T == Server
+            storable = Server(name, true)
+        else
+            storable = configure!(storable, server)
         end
+        yn_id = request("Proceed saving $storable_T with name $name to Server $(server.name)", RadioMenu(["yes", "no"]))
+        if yn_id == 1
+            save(server, storable)
+        end
+
+        yn_id = request("Configure more Storables?", RadioMenu(["yes", "no"]))
+        done = yn_id == 2
     end
 end
 
@@ -327,13 +318,12 @@ end
 function configure!(storable::T, s::Server) where {T<:Storable}
     tf = tempname()
     open(tf, "w") do f
-        write(f, "Storable configuration. Replace default fields as desired after reading the documentation below.\nSave and close editor when finished.\n\n")
+        write(f, "Storable configuration (read documentation below):\n\n")
         for field in configurable_fieldnames(T)
             value = getfield(storable, field)
             ft = typeof(value)
             write(f, "$field::$ft = $(repr(value))\n")
         end
-        write(f, "\n\n\n")
         write(f, "########## DOCUMENTATION #########\n")
         write(f, string(Docs.doc(T)))
         write(f, "\n")
@@ -341,7 +331,7 @@ function configure!(storable::T, s::Server) where {T<:Storable}
     end
     InteractiveUtils.edit(tf)
     tstr = filter(!isempty, readlines(tf))
-    i = findfirst(x->occursin("Save and close",x), tstr)
+    i = findfirst(x->occursin("Storable configuration",x), tstr)
     for (ii, f) in enumerate(configurable_fieldnames(T))
         field = getfield(storable, f)
         ft = typeof(field)

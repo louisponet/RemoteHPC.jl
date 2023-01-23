@@ -87,7 +87,7 @@ function submit_job(req, queue::Queue, channel)
         end
     end
     priority = haskey(p, "priority") ? parse(Int, p["priority"]) : DEFAULT_PRIORITY
-    put!(channel, jdir => priority)
+    put!(channel, jdir => (priority, -time()))
 end 
         
 function get_job(req::HTTP.Request, queue::Queue)
@@ -204,7 +204,7 @@ function priority!(req::HTTP.Request, queue::Queue)
     if haskey(queue.info.submit_queue, jdir) 
         priority = haskey(p, "priority") ? parse(Int, p["priority"]) : DEFAULT_PRIORITY
         lock(queue) do q
-            q.submit_queue[jdir] = priority
+            q.submit_queue[jdir] = (priority, q.submit_queue[jdir][2])
         end
         return priority
     else

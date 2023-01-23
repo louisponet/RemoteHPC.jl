@@ -6,7 +6,7 @@ end
 Base.@kwdef mutable struct QueueInfo
     full_queue::Dict{String,Job} = Dict{String,Job}()
     current_queue::Dict{String,Job} = Dict{String,Job}()
-    submit_queue::PriorityQueue{String, Int} = PriorityQueue{String, Int}(Base.Order.Reverse)
+    submit_queue::PriorityQueue{String, Tuple{Int, Float64}} = PriorityQueue{String, Float64}(Base.Order.Reverse)
 end
 StructTypes.StructType(::Type{QueueInfo}) = StructTypes.Mutable()
 
@@ -45,7 +45,11 @@ function Base.fill!(qu::Queue, s::Scheduler, init)
                         end
                     else
                         for (jdir, priority) in tq[:submit_queue]
-                            q.submit_queue[jdir] = priority
+                            if length(priority) > 1
+                                q.submit_queue[jdir] = (priority...,)
+                            else
+                                q.submit_queue[jdir] = (priority, -time())
+                            end
                         end
                     end
                 end
@@ -67,7 +71,7 @@ function Base.fill!(qu::Queue, s::Scheduler, init)
             for (d, i) in q.current_queue
                 if ispath(joinpath(d, "job.sh"))
                     q.full_queue[d] = Job(-1, Saved)
-                    push!(q.submit_queue, d)
+                    q.submit_queue[d] = (DEFAULT_PRIORITY, -time())
                 end
                 pop!(q.current_queue, d)
             end
@@ -104,7 +108,7 @@ Base.@kwdef mutable struct ServerData
     t::Float64 = time()
     requests_per_second::Float64 = 0.0
     total_job_submissions::Int = 0
-    submit_channel::Channel{Pair{String, Int}} = Channel{Pair{String, Int}}(Inf)
+    submit_channel::Channel{Pair{String, Tuple{Int, Float64}}} = Channel{Pair{String, Tuple{Int, Float64}}}(Inf)
     queue::Queue = Queue()
     sleep_time::Float64 = 5.0
     connections::Dict{String, Bool} = Dict{String, Bool}()
@@ -218,7 +222,7 @@ function handle_job_submission!(s::ServerData)
                 end
             end
             if curtries != -1
-                to_submit[job_dir] = priority + 1
+                to_submit[job_dir] = (priority[1] - 1, priority[2])
             end
         else
             @warnv 2 "Submission job at dir: $job_dir is not a directory." logtype=RuntimeLog
