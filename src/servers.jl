@@ -3,18 +3,25 @@ using OpenSSH_jll
 const SERVER_DIR = config_path("storage/servers")
 
 """
-    Server(name::String, username::String, domain::String, scheduler::Scheduler, mountpoint::String,
-           julia_exec::String, jobdir::String, max_concurrent_jobs::Int)
+    Server(name                ::String,
+           username            ::String,
+           domain              ::String,
+           scheduler           ::Scheduler,
+           julia_exec          ::String,
+           jobdir              ::String,
+           max_concurrent_jobs ::Int)
     Server(name::String)
 
-A [`Server`](@ref) represents a remote daemon that has the label `name`. It runs on the server defined by
-`username` and `domain`. The requirement is that `ssh` is set up in such a way that `ssh username@domain` is
-possible, i.e. ssh-copy-id must have been used to not require passwords while executing `ssh` commands.
+A [`Server`](@ref) represents a daemon running either locally or on some remote cluster.
+It facilitates all remote operations that are required to save, submit, monitor and retrieve HPC jobs.
 
-a tunnel will be created to guarantee a connection. This is useful in the case that the login node on the remote
-server can change.
+As with any [`Storable`](@ref), `name` is used simply as a label.
 
-Calling [`Server`](@ref) with a single `String` will either load the configuration that was previously saved with that label, or go through an interactive setup of a new server.
+`username` and `domain` should be those that allow for `ssh` connections between your local machine and the remote host.
+Make sure that passwords are not required to execute `ssh` commands, i.e. by having copied your `ssh` keys using `ssh-copy-id`. 
+
+`julia_exec` should be the path on the remote host where to find the `julia` executable.
+`scheduler` will be automatically deduced but can be overridden if needed.
 """
 @kwdef mutable struct Server <: Storable
     name::String = ""
