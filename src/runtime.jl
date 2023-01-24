@@ -6,7 +6,7 @@ end
 Base.@kwdef mutable struct QueueInfo
     full_queue::Dict{String,Job} = Dict{String,Job}()
     current_queue::Dict{String,Job} = Dict{String,Job}()
-    submit_queue::PriorityQueue{String, Tuple{Int, Float64}} = PriorityQueue{String, Float64}(Base.Order.Reverse)
+    submit_queue::PriorityQueue{String, Tuple{Int, Float64}} = PriorityQueue{String, Tuple{Int, Float64}}(Base.Order.Reverse)
 end
 StructTypes.StructType(::Type{QueueInfo}) = StructTypes.Mutable()
 
