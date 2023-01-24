@@ -46,9 +46,9 @@ function Base.fill!(qu::Queue, s::Scheduler, init)
                     else
                         for (jdir, priority) in tq[:submit_queue]
                             if length(priority) > 1
-                                q.submit_queue[jdir] = (priority...,)
+                                q.submit_queue[string(jdir)] = (priority...,)
                             else
-                                q.submit_queue[jdir] = (priority, -time())
+                                q.submit_queue[string(jdir)] = (priority, -time())
                             end
                         end
                     end
