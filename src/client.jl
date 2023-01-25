@@ -367,3 +367,7 @@ function configure!(storable::T, s::Server) where {T<:Storable}
     rm(tf)
     return storable
 end
+
+function version(s::Server)
+    return JSON3.read(HTTP.get(s, URI(path="/info/version")).body, VersionNumber)
+end

@@ -10,23 +10,8 @@ function execute_function(req::HTTP.Request)
     return func(args...)
 end
 
-function get_info(req, s::ServerData)
-    query = queryparams(req)
-    out = []
-    
-    if !haskey(query, "info")
-        error("No information requested.")
-    else
-        info = length(query["info"]) == 1 ? [query["info"]] : query["info"]
-        for i in info
-            if i == "version"
-                push!(out, PACKAGE_VERSION)
-            elseif i == "server"
-                push!(out, s.server)
-            end
-        end
-    end
-    return out
+function get_version()
+    return PACKAGE_VERSION
 end
 
 function server_config!(req, s::ServerData)
@@ -51,11 +36,11 @@ function server_config(req, s::ServerData)
 end
 
 function setup_core_api!(s::ServerData)
-    @put  "/server/kill" req -> (s.stop = true)
-    @get  "/info/"       req -> get_info(req, s)
-    @get  "/isalive/"    req -> true
-    @get  "/isalive/*"   req -> (n = splitpath(req.target)[end]; haskey(s.connections, n) && s.connections[n])
-    @get  "/api/**"      execute_function
+    @put  "/server/kill"  req -> (s.stop = true)
+    @get  "/info/version" req -> get_version()
+    @get  "/isalive/"     req -> true
+    @get  "/isalive/*"    req -> (n = splitpath(req.target)[end]; haskey(s.connections, n) && s.connections[n])
+    @get  "/api/**"       execute_function
     
     @get  "/ispath/"     req -> (p = queryparams(req)["path"]; ispath(p))
     @get  "/read/"       req -> (p = queryparams(req)["path"]; read(p))
