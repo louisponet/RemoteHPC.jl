@@ -1,7 +1,7 @@
 name = "RemoteHPC"
 uuid = "c4f2a1c4-7655-40d8-82ee-c6ae0a8b7409"
 authors = ["louisponet <louisponet@gmail.com>"]
-version = "0.3.13"
+version = "0.3.14"
 
 [deps]
 BinaryTraits = "190e46ec-f771-4705-b939-984896f7be0e"
