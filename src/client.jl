@@ -347,7 +347,7 @@ function configure!(storable::T, s::Server) where {T<:Storable}
         ft = typeof(field)
         line = tstr[i+ii]
         sline = split(line, "=")
-        # try
+        try
             if length(sline) > 2
                 v = Main.eval(Meta.parse(join(sline[2:end], "=")))
             else
@@ -355,13 +355,13 @@ function configure!(storable::T, s::Server) where {T<:Storable}
             end
                 
             setfield!(storable, f, v)
-        # catch e
-        #     @warn "Failed parsing $(split(tstr[i+ii], "=")[end]) as $ft. Try again"
-        #     @error stacktrace(catch_backtrace())
-        #     print("Press any key to continue...\n")
-        #     readline()
-        #     configure!(storable, s)
-        # end
+        catch e
+            @warn "Failed parsing $(split(tstr[i+ii], "=")[end]) as $ft. Try again"
+            @error stacktrace(catch_backtrace())
+            print("Press any key to continue...\n")
+            readline()
+            configure!(storable, s)
+        end
     end
         
     rm(tf)
@@ -369,5 +369,23 @@ function configure!(storable::T, s::Server) where {T<:Storable}
 end
 
 function version(s::Server)
-    return JSON3.read(HTTP.get(s, URI(path="/info/version")).body, VersionNumber)
+    if isalive(s)
+        try
+            return JSON3.read(HTTP.get(s, URI(path="/info/version")).body, VersionNumber)
+        catch
+            nothing
+        end
+    end
+    p = config_path(s, "Manifest.toml")
+    t = server_command(s, "cat $p")
+    if t.exitcode != 0
+        return error("Manifest.toml not found on Server $(s.name).")
+    else
+        tmp = tempname()
+        write(tmp, t.stdout)
+        man = Pkg.Types.read_manifest(tmp)
+        deps = Pkg.Operations.load_manifest_deps(man)
+        remid = findfirst(x->x.name == "RemoteHPC", deps)
+        return deps[remid].version
+    end
 end

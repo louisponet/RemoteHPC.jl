@@ -207,16 +207,16 @@ local_server() = Server(gethostname())
 
 function install_julia(s::Server)
     julia_tar = "julia-1.8.5-linux-x86_64.tar.gz"
-    p = ProgressUnknown("Installing julia on Server $(s.name) ($(s.username)@$(s.domain))...")
+    p = ProgressUnknown("Installing julia on Server $(s.name) ($(s.username)@$(s.domain))...", spinner=true)
     t = tempname()
     mkdir(t)
-    next!(p, showvalues = [("step [1/3]", "downloading")])
+    next!(p, showvalues = [("step [1/3]", "downloading")], keep=true)
     download("https://julialang-s3.julialang.org/bin/linux/x64/1.8/julia-1.8.5-linux-x86_64.tar.gz",
              joinpath(t, "julia.tar.gz"))
-    next!(p, showvalues = [("step [2/3]", "pushing")])
+    next!(p, showvalues = [("step [2/3]", "pushing")], keep=true)
     push(joinpath(t, "julia.tar.gz"), s, julia_tar)
     rm(t; recursive = true)
-    next!(p, showvalues = [("step [3/3]", "unpacking")])
+    next!(p, showvalues = [("step [3/3]", "unpacking")], keep=true)
     res = server_command(s, "tar -xf $julia_tar")
     server_command(s, "rm $julia_tar")
     finish!(p)
@@ -233,39 +233,72 @@ function install_RemoteHPC(s::Server, julia_exec = s.julia_exec)
     else
         julia_exec = res.stdout[1:end-1]
     end
-    @debug "Installing RemoteHPC"
+    @info "Installing RemoteHPC"
     s.julia_exec = julia_exec
     res = julia_cmd(s, "using Pkg; Pkg.activate(joinpath(Pkg.depots()[1], \"config/RemoteHPC\")); Pkg.add(\"RemoteHPC\");Pkg.build(\"RemoteHPC\")")
     @assert res.exitcode == 0 "Something went wrong installing RemoteHPC on server, please install manually"
 
-    @debug "RemoteHPC installed on remote cluster, try starting the server with `start(server)`."
+    @info "RemoteHPC installed on remote cluster, try starting the server with `start(server)`."
     return
 end
 
 function update_RemoteHPC(s::Server)
+    p = ProgressUnknown("Updating RemoteHPC on Server $(s.name) ($(s.username)@$(s.domain))...", spinner=true, dt=0.0)
+    curvals = [("step [1/3]", "Checking server status")]
+    finished = false
+    ptsk = Threads.@spawn begin
+        while !finished
+            next!(p, showvalues = curvals, spinner="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+            sleep(0.1)
+        end
+    end
+    v = nothing
+    try
+        v = version(s)
+        curvals = [("step [1/3]", "Current version $v")]
+    catch
+        curvals = [("step [1/3]", "Current version could not be determined")]
+    end
+        
     alive = isalive(s)
     if alive
-        @debug "Server running, killing it first."
+        curvals = [("step [1/3]", "Server was alive, killing")]
         kill(s)
     end
-    @debug "Updating RemoteHPC"
+    curvals = [("step [2/3]", "Updating RemoteHPC")]
     if islocal(s)
         curproj = Pkg.project().path
         Pkg.activate(joinpath(depot_path(s), "config/RemoteHPC"))
         Pkg.update()
         Pkg.activate(curproj)
     else
+        curvals = [("step [2/3]", "Executing remote update command")]
         res = julia_cmd(s, "using Pkg; Pkg.activate(joinpath(Pkg.depots()[1], \"config/RemoteHPC\"));  Pkg.update(\"RemoteHPC\")")
         if res.exitcode != 0
-            @error "stdout: $(res.stdout)", "stderr: $(res.stderr)", "exitcode: $(res.exitcode)"
-        else
-            @debug "Updated RemoteHPC succesfully"
+            finished = true
+            fetch(ptsk)
+            finish!(p, spinner='✗')
+            error("Error while updating Server $(s.name):\nstdout: $(res.stdout) stderr: $(res.stderr) exitcode: $(res.exitcode)")
         end
     end
+    curvals = [("step [3/3]", "Restarting Server if needed")]
     if alive
         @debug "Restarting server."
         start(s)
     end
+    finished = true
+    fetch(ptsk)
+    finish!(p)
+    if v !== nothing
+        newver = version(s)
+        if v == newver
+            @warn "Version did not update, is RemoteHPC installed from a fixed path on the Server?"
+        else
+            @info "Version $v -> $newver"
+        end
+    else
+        @info "New version $(version(s))"
+    end 
 end
 
 Base.joinpath(s::Server, p...) = joinpath(s.jobdir, p...)
@@ -320,7 +353,7 @@ end
 parse_config(config) = JSON3.read(config, Server)
 read_config(config_file) = parse_config(read(config_file, String))
 
-config_path(s::Server) = joinpath(depot_path(s), "config", "RemoteHPC")
+config_path(s::Server, p...) = joinpath(depot_path(s), "config", "RemoteHPC", p...)
 
 function load_config(username, domain, conf_path)
     hostname = gethostname(username, domain)
@@ -354,11 +387,14 @@ function depot_path(s::Server)
     if islocal(s)
         occursin("cache", Pkg.depots()[1]) ? Pkg.depots()[2] : Pkg.depots()[1]
     else
-        t = julia_cmd(s, "print(realpath(Base.DEPOT_PATH[1]))").stdout
-        if occursin("cache", t)
+        t = julia_cmd(s, "print(realpath(Base.DEPOT_PATH[1]))")
+        if t.exitcode != 0
+            error("Server $(s.name) can't be reached:\n$(t.stderr)")
+        end
+        if occursin("cache", t.stdout)
             return julia_cmd(s, "print(realpath(Base.DEPOT_PATH[2]))").stdout
         else
-            return t
+            return t.stdout
         end
     end
 end
