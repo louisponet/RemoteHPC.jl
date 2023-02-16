@@ -18,7 +18,14 @@ end
 
 function TimestampLogger(logger)
     TransformerLogger(logger) do log
-        merge(log, (;message="[$(Dates.format(now(), LOGGING_DATE_FORMAT))] {tid: $(Threads.threadid())} - $(log.message)"))
+        if haskey(log.kwargs, :exception)
+            s = IOBuffer()
+            showerror(s, log.kwargs[:exception]...; backtrace=true)
+            msg = String(resize!(s.data, s.size))
+        else
+            msg = log.message
+        end
+        merge(log, (;message="[$(Dates.format(now(), LOGGING_DATE_FORMAT))] {tid: $(Threads.threadid())} - $msg"))
     end
 end
 

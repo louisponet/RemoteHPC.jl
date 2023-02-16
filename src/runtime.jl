@@ -242,6 +242,8 @@ function requestHandler(handler, s::ServerData)
                 resp = HTTP.Response(204)
             elseif obj isa HTTP.Response
                 return obj
+            elseif obj isa Exception
+                resp = HTTP.Response(500, log_error(obj))
             else
                 resp = HTTP.Response(200, JSON3.write(obj))
             end
@@ -379,10 +381,10 @@ function julia_main(;verbose=0)::Cint
                 save(s)
                 @async serve(middleware = [x -> requestHandler(x, server_data), x -> AuthHandler(x, UUID(s.uuid))],
                                   host="0.0.0.0", port=Int(port), server = server, access_log=nothing, serialize=false)
-                @debug "Shutting down server"
                 while !server_data.stop
                     sleep(1)
                 end
+                @debug "Shutting down server"
                 terminate()
                 fetch(t)
                 return 0
