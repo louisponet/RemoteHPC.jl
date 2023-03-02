@@ -24,6 +24,7 @@ const CONFIG_DIR = occursin("cache", first(Base.DEPOT_PATH)) ?
                    abspath(Base.DEPOT_PATH[2], "config", "RemoteHPC") :
                    abspath(Base.DEPOT_PATH[1], "config", "RemoteHPC")
 
+
 config_path(path...) = joinpath(CONFIG_DIR, gethostname(), path...)
 
 function getfirst(f, itr)
@@ -41,10 +42,13 @@ include("database.jl")
 include("types.jl")
 include("schedulers.jl")
 include("servers.jl")
+const LOCAL_SERVER = Ref{Server}()
+
 include("runtime.jl")
 include("api.jl")
 include("client.jl")
 include("io.jl")
+
 
 @precompile_all_calls begin
     s = local_server()
@@ -69,7 +73,6 @@ export Server, start, restart, local_server, isalive, load, save, submit, abort,
 export Calculation, Environment, Exec, HQ, Slurm, Bash
 export exec
 
-const LOCAL_SERVER = Ref{Server}()
 
 function __init__()
     LOCAL_SERVER[] = local_server()
