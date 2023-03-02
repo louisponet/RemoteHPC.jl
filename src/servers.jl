@@ -209,6 +209,7 @@ function local_server()
     if !exists(s)
         error("Local Server wasn't configured. Try running `using Pkg; Pkg.build(\"RemoteHPC\")`")
     end
+    return s
 end
 
 function install_julia(s::Server)
