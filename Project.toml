@@ -1,7 +1,7 @@
 name = "RemoteHPC"
 uuid = "c4f2a1c4-7655-40d8-82ee-c6ae0a8b7409"
 authors = ["louisponet <louisponet@gmail.com>"]
-version = "0.3.15"
+version = "0.3.16"
 
 [deps]
 BinaryTraits = "190e46ec-f771-4705-b939-984896f7be0e"
@@ -32,12 +32,12 @@ HTTP = "1.6.2"
 JSON3 = "1.12.0"
 LoggingExtras = "1.0.0"
 OpenSSH_jll = "8.1"
+Oxygen = "^1.1.4"
 ProgressMeter = "1.7.2"
 SnoopPrecompile = "^1"
 StructTypes = "^1"
-ThreadPools = "^2"
-Oxygen = "^1.1.4"
 SwaggerMarkdown = "^0.2.1"
+ThreadPools = "^2"
 julia = "^1.6"
 
 [extras]
