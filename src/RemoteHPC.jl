@@ -19,8 +19,6 @@ using InteractiveUtils
 using BinaryTraits
 using DataStructures
 using Oxygen
-# using SwaggerMarkdown
-
 
 const CONFIG_DIR = occursin("cache", first(Base.DEPOT_PATH)) ?
                    abspath(Base.DEPOT_PATH[2], "config", "RemoteHPC") :
@@ -84,8 +82,5 @@ const PACKAGE_VERSION = let
     project = TOML.parsefile(joinpath(pkgdir(@__MODULE__), "Project.toml"))
     VersionNumber(project["version"])
 end
-# if Base.VERSION >= v"1.4.2"
-#     include("precompile.jl")
-#     _precompile_()
-# end
+
 end# module RemoteHPC

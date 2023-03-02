@@ -203,7 +203,13 @@ function Server(s::AbstractString; overwrite=false)
 end
 
 islocal(s::Server) = s.domain == "localhost"
-local_server() = Server(gethostname())
+
+function local_server()
+    s = Server(name=gethostname())
+    if !exists(s)
+        error("Local Server wasn't configured. Try running `using Pkg; Pkg.build(\"RemoteHPC\")`")
+    end
+end
 
 function install_julia(s::Server)
     julia_tar = "julia-1.8.5-linux-x86_64.tar.gz"
