@@ -345,7 +345,7 @@ function check_connections!(server_data::ServerData, args...; kwargs...)
     return conn
 end
     
-function julia_main(;verbose=0)::Cint
+function julia_main(;verbose=0, kwargs...)::Cint
     logger = TimestampLogger(TeeLogger(HTTPLogger(),
                                    NotHTTPLogger(TeeLogger(RESTLogger(),
                                                  RuntimeLogger(),
@@ -357,7 +357,7 @@ function julia_main(;verbose=0)::Cint
                 port, server = listenany(ip"0.0.0.0", 8080)
                 s.port = port
 
-                server_data = ServerData(server=s)
+                server_data = ServerData(server=s; kwargs...)
 
                 @debug "Checking connections..." logtype=RuntimeLog
                 check_connections!(server_data, false)
