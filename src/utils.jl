@@ -36,7 +36,7 @@ macro timeout(seconds, expr, err_expr=:(nothing))
                 RemoteHPC.log_error(RemoteHPC.StallException(err__))
                 $err_expr
             else
-                rethrow(err__.task.exception)
+                rethrow(err__)
             end
         end
     end)

@@ -212,6 +212,7 @@ function local_server()
     return load(s)
 end
 
+# TODO use versions.json from main julia site
 function install_julia(s::Server)
     julia_tar = "julia-1.8.5-linux-x86_64.tar.gz"
     p = ProgressUnknown("Installing julia on Server $(s.name) ($(s.username)@$(s.domain))...", spinner=true)
@@ -386,8 +387,13 @@ function load_config(s::Server)
 end
 
 function Base.gethostname(username::AbstractString, domain::AbstractString)
-    return split(server_command(username, domain, "hostname").stdout)[1]
+    t = server_command(username, domain, "hostname")
+    if !isempty(t.stderr)
+        error(t.stderr)
+    end
+    return split(t.stdout)[1]
 end
+
 Base.gethostname(s::Server) = gethostname(s.username, s.domain)
 
 function depot_path(s::Server)
@@ -470,22 +476,30 @@ end
 Pulls `remote` from the server to `loc`.
 """
 function pull(server::Server, remote::String, loc::String)
+    if !ispath(server, remote)
+        error("No such file or directory $remote.")
+    end
     path = isdir(loc) ? joinpath(loc, splitpath(remote)[end]) : loc
     if islocal(server)
         cp(remote, path; force = true)
     else
-        out = Pipe()
-        err = Pipe()
-        # OpenSSH_jll.scp() do scp_exec
-            run(pipeline(`scp -r $(ssh_string(server) * ":" * remote) $path`; stdout = out,
-                         stderr = err))
-        # end
-        close(out.in)
-        close(err.in)
-        stderr = read(err, String)
-        if !isempty(stderr)
-            error("$stderr")
+        if filesize(server, remote) > 100e6 || isdir(server, remote)
+            out = Pipe()
+            err = Pipe()
+            # OpenSSH_jll.scp() do scp_exec
+                run(pipeline(`scp -r $(ssh_string(server) * ":" * remote) $path`; stdout = out,
+                             stderr = err))
+            # end
+            close(out.in)
+            close(err.in)
+            stderr = read(err, String)
+            if !isempty(stderr)
+                error("$stderr")
+            end
+        else
+            write(loc, read(server, remote))
         end
+            
     end
     return path
 end
