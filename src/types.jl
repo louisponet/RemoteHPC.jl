@@ -89,7 +89,7 @@ function Base.setproperty!(e::Exec, name::Symbol, v)
         Base.depwarn("`e.exec` will be deprecated in favor of `e.path`.", :Exec)
         return setfield!(e, :path, joinpath(dirname(e.path), v))
     else
-        return getfield(e, name)
+        return setfield!(e, name, v)
     end
 end
 
