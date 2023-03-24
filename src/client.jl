@@ -3,7 +3,7 @@
 
 Launches the daemon process on  the host [`Server`](@ref) `s`.
 """
-function start(s::Server; verbose=0)
+function start(s::Server; verbosity=0)
     if !islocal(s) && !isalive(LOCAL_SERVER[])
         @warn "Local server not running. Starting that first."
         start(LOCAL_SERVER[])
@@ -55,9 +55,9 @@ function start(s::Server; verbose=0)
     firstime = checktime()
 
     p = "$(conf_path)/$hostname/logs/errors.log"
-    scrpt = "using RemoteHPC; RemoteHPC.julia_main(verbose=$(verbose))"
+    scrpt = "using RemoteHPC; RemoteHPC.julia_main(verbose=$(verbosity))"
     if s.domain != "localhost"
-        julia_cmd = replace("""$(s.julia_exec) --project=$(conf_path) --startup-file=no -t 10 -e "using RemoteHPC; RemoteHPC.julia_main(verbose=$(verbose))" &> $p""",
+        julia_cmd = replace("""$(s.julia_exec) --project=$(conf_path) --startup-file=no -t 10 -e "using RemoteHPC; RemoteHPC.julia_main(verbose=$(verbosity))" &> $p""",
                             "'" => "")
         if Sys.which("ssh") === nothing
             OpenSSH_jll.ssh() do ssh_exec

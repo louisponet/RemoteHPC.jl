@@ -278,6 +278,7 @@ function AuthHandler(handler, user_uuid::UUID)
 end
 
 function check_connections!(connections, verify_tunnels; names=keys(connections))
+    @debug "Checking connections..." logtype=RuntimeLog
     for (n, connected) in connections
         if !exists(Server(name=n))
             pop!(connections, n)
@@ -288,7 +289,9 @@ function check_connections!(connections, verify_tunnels; names=keys(connections)
         s.domain == "localhost" && continue
         
         try
-            connections[n] = HTTP.get(s, URI(path="/isalive")) !== nothing
+            connections[n] = @timeout 30 begin
+                return HTTP.get(s, URI(path="/isalive")) !== nothing
+            end false
         catch
             connections[n] = false
         end
@@ -308,7 +311,7 @@ function check_connections!(connections, verify_tunnels; names=keys(connections)
                     remote_server = load_config(s.username, s.domain, config_path(s))
                     remote_server === nothing && return false
                     s.port = construct_tunnel(s, remote_server.port)
-                    sleep(2)
+                    sleep(5)
                     s.uuid = remote_server.uuid
                     try
                         
@@ -359,16 +362,19 @@ function julia_main(;verbose=0, kwargs...)::Cint
 
                 server_data = ServerData(server=s; kwargs...)
 
-                @debug "Checking connections..." logtype=RuntimeLog
-                check_connections!(server_data, false)
-
                 @debug "Setting up Router" logtype=RuntimeLog
 
                 setup_core_api!(server_data)
                 setup_job_api!(server_data)
                 setup_database_api!()
-                repeat = router("/repeat", interval=1.0, tags=["repeat"])
-                @get repeat("/check_connections") () -> check_connections!(server_data, false)
+
+                connection_task = Threads.@spawn @stoppable server_data.stop begin
+                    @debug "Checking Connections" logtype=RuntimeLog
+                    check_connections!(server_data, true)
+                    while true
+                        check_connections!(server_data, false)
+                    end
+                end
                 
                 @debug "Starting main loop" logtype=RuntimeLog
 
@@ -387,6 +393,7 @@ function julia_main(;verbose=0, kwargs...)::Cint
                 @debug "Shutting down server"
                 terminate()
                 fetch(t)
+                fetch(connection_task)
                 return 0
             catch e
                 log_error(e)

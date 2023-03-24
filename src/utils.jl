@@ -14,30 +14,66 @@ function Base.showerror(io::IO, err::StallException, args...)
 end
 
 macro timeout(seconds, expr, err_expr=:(nothing))
+    tsk        = gensym("tsk")
+    start_time = gensym("start_time")
+    curt       = gensym("curt")
+    timer      = gensym("timer")
+    err        = gensym("err")
+    
     esc(quote
-        tsk__ = @task $expr
-        schedule(tsk__)
-        start_time__ = time()
-        curt__ = time()
-        Base.Timer(0.001, interval=0.001) do timer__
-            if tsk__ === nothing || istaskdone(tsk__)
-                close(timer__)
+        $tsk = @task $expr
+        schedule($tsk)
+        
+        $start_time = time()
+        
+        $curt = time()
+        Base.Timer(0.001, interval=0.001) do $timer
+            if $tsk === nothing || istaskdone($tsk)
+                close($timer)
             else
-                curt__ = time()
-                if curt__ - start_time__ > $seconds
-                    Base.throwto(tsk__, InterruptException())
+                $curt = time()
+                if $curt - $start_time > $seconds
+                    Base.throwto($tsk, InterruptException())
                 end
             end
         end
         try
-            fetch(tsk__)
-        catch err__
-            if err__.task.exception isa InterruptException
-                RemoteHPC.log_error(RemoteHPC.StallException(err__))
+            fetch($tsk)
+        catch $err
+            if $err.task.exception isa InterruptException
+                RemoteHPC.log_error(RemoteHPC.StallException($err))
                 $err_expr
             else
-                rethrow(err__)
+                rethrow($err)
             end
         end
     end)
 end
+
+macro stoppable(stop, expr)
+    tsk        = gensym("tsk")
+    timer      = gensym("timer")
+    err = gensym("err")
+    
+    esc(quote
+        $tsk = @task $expr
+        schedule($tsk)
+        
+        Base.Timer(0.001, interval=0.001) do $timer
+            if $tsk === nothing || istaskdone($tsk)
+                close($timer)
+            elseif $stop
+                Base.throwto($tsk, InterruptException())
+            end
+        end
+        try
+            fetch($tsk)
+        catch $err
+            if !($err.task.exception isa InterruptException)
+                rethrow($err)
+            end
+        end
+    end)
+end
+
+
