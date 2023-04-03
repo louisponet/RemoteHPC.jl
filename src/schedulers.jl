@@ -240,7 +240,11 @@ function maybe_restart_allocs(sc::HQ)
     end
 
     for ac in allocs_to_add
-        run(Cmd(string.([split(sc.server_command)..., "alloc", "add", split(ac)...])))
+        try
+            run(Cmd(string.([split(sc.server_command)..., "alloc", "add", split(ac)...])))
+        catch e
+            log_error(e)
+        end
     end
 end
 

@@ -370,9 +370,13 @@ function julia_main(;verbose=0, kwargs...)::Cint
 
                 connection_task = Threads.@spawn @stoppable server_data.stop begin
                     @debug "Checking Connections" logtype=RuntimeLog
-                    check_connections!(server_data, true)
-                    while true
-                        check_connections!(server_data, false)
+                    try
+                        check_connections!(server_data, true)
+                        while true
+                            check_connections!(server_data, true)
+                        end
+                    catch e
+                        log_error(e)
                     end
                 end
                 
