@@ -60,7 +60,7 @@ function Logging.handle_message(logger::TimeBufferedFileLogger, level::LogLevel,
     end
     unlock(logger.lock)
 end
-LoggingExtras.min_enabled_level(::TimeBufferedFileLogger) = BelowMinLevel
+LoggingExtras.min_enabled_level(::TimeBufferedFileLogger) = LoggingExtras.BelowMinLevel
 LoggingExtras.shouldlog(::TimeBufferedFileLogger, args...) = true
 LoggingExtras.catch_exceptions(filelogger::TimeBufferedFileLogger) = false
 
