@@ -53,7 +53,8 @@ function Logging.handle_message(logger::TimeBufferedFileLogger, level::LogLevel,
         println(iob, "  ", msg)
     end
     if dt > logger.interval
-        open(logger.path, append = true) do f
+        fsize = filesize(logger.path)
+        open(logger.path, append =  fsize < 100e6, truncate = fsize >= 100e6) do f
             write(f, take!(logger.buffer))
         end
         logger.last_write = curt
