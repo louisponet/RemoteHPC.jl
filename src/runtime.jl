@@ -373,7 +373,12 @@ function julia_main(;verbose=0, kwargs...)::Cint
                     try
                         check_connections!(server_data, true)
                         while true
+                            t = time()
                             check_connections!(server_data, true)
+                            sleep_t = 5 - (time() - t)
+                            if sleep_t > 0
+                                sleep(sleep_t)
+                            end
                         end
                     catch e
                         log_error(e)
