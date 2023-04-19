@@ -13,12 +13,22 @@ from the [`Server`](@ref) where it is stored.
 
 In a job script this will be translated as `<path> <flags>`.
 
-For example:
+# `configure()` Example
+```julia
+name::String = "exec_label"
+path::String = "/path/to/exec"
+flags::Dict{Any, Any} = Dict{Any, Any}("l" => 1, "-np" => 4, "trialname" => "testtrial")
+modules::Vector{String} = String["intel","intel-mkl"]
+parallel::Bool = false
+```
+
+# Example:
 ```julia
 Exec(; path="ls", flags=Dict("l" => ""))
-# translates into: ls -l
 ```
-## Flags
+translates into `ls -l` in the jobscript.
+
+# Flags
 The `flags` `Dict` is expanded into the jobscript as follows:
 ```julia
 Exec(path="foo", flags = Dict("N"    => 1,
@@ -28,11 +38,11 @@ Exec(path="foo", flags = Dict("N"    => 1,
                               "--t2" => 24)
 # translates into: foo -N1 -nk 10 --np=\$NPOOLS --t --t2=24
 ```
-## Modules
+# Modules
 The `modules` vector gets expanded into `module load` commands:
 `modules = ["gcc", "QuantumESPRESSO"]` will lead to `module load gcc, QuantumESPRESSO` in the jobscript.
 
-## Parallel
+# Parallel
 `parallel` communicates whether the executable should be ran with the parallel executable defined in the
 [`Environment`](@ref) that represents the execution environment.
 For example:
@@ -143,6 +153,16 @@ and which executable to use for parallel execution (think `mpirun`, `srun`, etc)
 
 As with any [`Storable`](@ref), `name` is used simply as a label to be able to [`load`](@ref) it
 from the [`Server`](@ref) where it is stored.
+
+# `configure()` Example
+```julia
+name::String = "default",
+directives::Dict{Any, Any} = Dict{Any, Any}("time" => "24:00:00", "partition" => "standard", "account" => "s1073", "N" => 4, "ntasks-per-node" => 36, "cpus-per-taks" => 1)
+exports::Dict{Any, Any} = Dict{Any, Any}("OMP_NUM_THREADS" => 1)
+preamble::String = "echo hello"
+postamble::String = "echo goodbye"
+parallel_exec::Exec = Exec(name="srun", path="srun", flags=Dict("n" => 36))
+```
 
 # Example
 

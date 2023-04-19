@@ -1,6 +1,7 @@
 # RemoteHPC.jl
 [![Build Status](https://github.com/louisponet/RemoteHPC.jl/workflows/CI/badge.svg)](https://github.com/louisponet/RemoteHPC.jl/actions?query=workflow%3ACI)
 [![codecov](https://codecov.io/gh/louisponet/RemoteHPC.jl/branch/master/graph/badge.svg?token=PAFMYMVJUT)](https://codecov.io/gh/louisponet/RemoteHPC.jl)
+[![Package Downloads](https://shields.io/endpoint?url=https://pkgs.genieframework.com/api/v1/badge/RemoteHPC)](https://pkgs.genieframework.com?packages=RemoteHPC)
 
 RemoteHPC attempts to wrap all the usual interactions one might have with a remote HPC cluster in a restAPI webserver that runs on the frontend of the cluster.
 

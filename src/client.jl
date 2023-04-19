@@ -325,15 +325,17 @@ function ask_input(::Type{T}, message, default = nothing) where {T}
 end
 
 function configure!(storable::T, s::Server) where {T<:Storable}
-    tf = tempname()
+    tdir = tempname()
+    mkpath(tdir)
+    tf = joinpath(tdir, "storable.md")
     open(tf, "w") do f
-        write(f, "Storable configuration. Replace default fields as desired after reading the documentation below.\nSave and close editor when finished.\n\n")
+        write(f, "Storable configuration. Replace default fields as desired after reading the documentation below.\nSave and close editor when finished.\n```julia\n")
         for field in configurable_fieldnames(T)
             value = getfield(storable, field)
             ft = typeof(value)
             write(f, "$field::$ft = $(repr(value))\n")
         end
-        write(f, "\n\n\n")
+        write(f, "```\n\n\n")
         write(f, "########## DOCUMENTATION #########\n")
         write(f, string(Docs.doc(T)))
         write(f, "\n")
@@ -341,7 +343,10 @@ function configure!(storable::T, s::Server) where {T<:Storable}
     end
     InteractiveUtils.edit(tf)
     tstr = filter(!isempty, readlines(tf))
-    i = findfirst(x->occursin("Save and close",x), tstr)
+    i = findfirst(x->occursin("```julia",x), tstr)
+
+    parsing_error = false
+    
     for (ii, f) in enumerate(configurable_fieldnames(T))
         field = getfield(storable, f)
         ft = typeof(field)
@@ -356,16 +361,19 @@ function configure!(storable::T, s::Server) where {T<:Storable}
                 
             setfield!(storable, f, v)
         catch e
-            @warn "Failed parsing $(split(tstr[i+ii], "=")[end]) as $ft. Try again"
-            @error stacktrace(catch_backtrace())
-            print("Press any key to continue...\n")
-            readline()
-            configure!(storable, s)
+            @warn "Failed parsing $(split(tstr[i+ii], "=")[end]) as $ft."
+            showerror(stdout, e, stacktrace(catch_backtrace()))
+            parsing_error = true
         end
     end
+    if parsing_error
         
-    rm(tf)
-    return storable
+        @info "There was a parsing error. Please try again by pressing any key to continue...\n"
+        readline()
+        return configure!(storable, s)
+    else
+        return storable
+    end
 end
 
 function version(s::Server)
