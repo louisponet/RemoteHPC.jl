@@ -341,39 +341,38 @@ function configure!(storable::T, s::Server) where {T<:Storable}
         write(f, "\n")
         write(f, "########## DOCUMENTATION END #####\n\n\n")
     end
-    InteractiveUtils.edit(tf)
-    tstr = filter(!isempty, readlines(tf))
-    i = findfirst(x->occursin("```julia",x), tstr)
 
-    parsing_error = false
-    
-    for (ii, f) in enumerate(configurable_fieldnames(T))
-        field = getfield(storable, f)
-        ft = typeof(field)
-        line = tstr[i+ii]
-        sline = split(line, "=")
-        try
-            if length(sline) > 2
-                v = Main.eval(Meta.parse(join(sline[2:end], "=")))
-            else
-                v = Main.eval(Meta.parse(sline[end]))
+    parsing_error = true
+
+    while parsing_error
+        
+        parsing_error = false
+        
+        InteractiveUtils.edit(tf)
+        tstr = filter(!isempty, readlines(tf))
+        i = findfirst(x->occursin("```julia",x), tstr)
+        
+        for (ii, f) in enumerate(configurable_fieldnames(T))
+            field = getfield(storable, f)
+            ft = typeof(field)
+            line = tstr[i+ii]
+            sline = split(line, "=")
+            try
+                if length(sline) > 2
+                    v = Main.eval(Meta.parse(join(sline[2:end], "=")))
+                else
+                    v = Main.eval(Meta.parse(sline[end]))
+                end
+                    
+                setfield!(storable, f, v)
+            catch e
+                @warn "Failed parsing $(split(tstr[i+ii], "=")[end]) as $ft."
+                showerror(stdout, e, stacktrace(catch_backtrace()))
+                parsing_error = true
             end
-                
-            setfield!(storable, f, v)
-        catch e
-            @warn "Failed parsing $(split(tstr[i+ii], "=")[end]) as $ft."
-            showerror(stdout, e, stacktrace(catch_backtrace()))
-            parsing_error = true
         end
     end
-    if parsing_error
-        
-        @info "There was a parsing error. Please try again by pressing any key to continue...\n"
-        readline()
-        return configure!(storable, s)
-    else
-        return storable
-    end
+    return storable
 end
 
 function version(s::Server)
