@@ -93,7 +93,13 @@ function configure!(s::Server; interactive = true)
 
             s = Server(name=s.name, username=username, domain=domain)
             @debug "Trying to pull existing configuration from $username@$domain..."
-            server = load_config(username, domain, config_path(s))
+            
+            try
+                server = load_config(username, domain, config_path(s))
+            catch
+                server = nothing
+            end
+            
             if server !== nothing
                 
                 server.name = s.name
