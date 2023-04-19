@@ -329,7 +329,7 @@ function configure!(storable::T, s::Server) where {T<:Storable}
     mkpath(tdir)
     tf = joinpath(tdir, "storable.md")
     open(tf, "w") do f
-        write(f, "Storable configuration. Replace default fields as desired after reading the documentation below.\nSave and close editor when finished.\n```julia\n")
+        write(f, "Storable configuration. Replace default fields inside the ```julia``` block as desired after reading the documentation below.\nSave and close editor when finished.\n```julia\n")
         for field in configurable_fieldnames(T)
             value = getfield(storable, field)
             ft = typeof(value)
@@ -347,7 +347,8 @@ function configure!(storable::T, s::Server) where {T<:Storable}
     while parsing_error
         
         parsing_error = false
-        
+        @info "Opening editor, press any key to continue..."
+        readline()        
         InteractiveUtils.edit(tf)
         tstr = filter(!isempty, readlines(tf))
         i = findfirst(x->occursin("```julia",x), tstr)

@@ -157,7 +157,7 @@ from the [`Server`](@ref) where it is stored.
 # `configure()` Example
 ```julia
 name::String = "default",
-directives::Dict{Any, Any} = Dict{Any, Any}("time" => "24:00:00", "partition" => "standard", "account" => "s1073", "N" => 4, "ntasks-per-node" => 36, "cpus-per-taks" => 1)
+directives::Dict{Any, Any} = Dict{Any, Any}("time" => "24:00:00", "partition" => "standard", "account" => "s1073", "N" => 4, "ntasks-per-node" => 36, "cpus-per-task" => 1)
 exports::Dict{Any, Any} = Dict{Any, Any}("OMP_NUM_THREADS" => 1)
 preamble::String = "echo hello"
 postamble::String = "echo goodbye"
@@ -169,7 +169,7 @@ parallel_exec::Exec = Exec(name="srun", path="srun", flags=Dict("n" => 36))
 ```julia
 Environment(
     name = "default",
-    directives = Dict("time" => "24:00:00", "partition" => "standard", "account" => "s1073", "N" => 4, "ntasks-per-node" => 36, "cpus-per-taks" => 1)
+    directives = Dict("time" => "24:00:00", "partition" => "standard", "account" => "s1073", "N" => 4, "ntasks-per-node" => 36, "cpus-per-task" => 1)
     exports = Dict("OMP_NUM_THREADS" => 1)
     preamble = "echo hello"
     postamble = "echo goodbye"
