@@ -76,7 +76,8 @@ function Exec(a,b,c,d,e,f)
     return Exec(a, joinpath(b, c), d, e, f)
 end
 
-exec(e::Exec) = splitpath(e.path)[end]
+exec(e::Exec) = splitdir(e.path)[end]
+Base.dirname(e::Exec) = splitdir(e.path)[1]
 
 # Backwards compatibility
 function Base.getproperty(e::Exec, name::Symbol)
@@ -97,7 +98,7 @@ function Base.setproperty!(e::Exec, name::Symbol, v)
         return setfield!(e, :path, joinpath(v, exec(e)))
     elseif name == :exec
         Base.depwarn("`e.exec` will be deprecated in favor of `e.path`.", :Exec)
-        return setfield!(e, :path, joinpath(dirname(e.path), v))
+        return setfield!(e, :path, joinpath(dirname(e), v))
     else
         return setfield!(e, name, v)
     end

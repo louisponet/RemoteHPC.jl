@@ -351,7 +351,7 @@ function configure!(storable::T, s::Server) where {T<:Storable}
         readline()        
         InteractiveUtils.edit(tf)
         tstr = filter(!isempty, readlines(tf))
-        i = findfirst(x->occursin("```julia",x), tstr)
+        i = findfirst(x -> x == "```julia", tstr)
         
         for (ii, f) in enumerate(configurable_fieldnames(T))
             field = getfield(storable, f)
