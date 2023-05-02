@@ -54,8 +54,10 @@ function Logging.handle_message(logger::TimeBufferedFileLogger, level::LogLevel,
     end
     if dt > logger.interval
         fsize = filesize(logger.path)
-        open(logger.path, append =  fsize < 100e6, truncate = fsize >= 100e6) do f
-            write(f, take!(logger.buffer))
+        open(logger.path, append = fsize < 100e6, truncate = fsize >= 100e6) do f
+            write(f, view(logger.buffer.data, 1:logger.buffer.size))
+            logger.buffer.size = 0
+            logger.buffer.ptr = 1
         end
         logger.last_write = curt
     end
