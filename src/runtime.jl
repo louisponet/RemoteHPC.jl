@@ -295,7 +295,6 @@ function check_connections!(connections, verify_tunnels; names=keys(connections)
         catch
             connections[n] = false
         end
-        @debugv 1 "Connection to $n: $(connections[n])" logtype=RuntimeLog
     end
     if verify_tunnels
         @debugv 1 "Verifying tunnels" logtype=RuntimeLog
@@ -304,9 +303,15 @@ function check_connections!(connections, verify_tunnels; names=keys(connections)
             !(n in names) && continue
             s = load(Server(n))
             s.domain == "localhost" && continue
+
+            if find_tunnel(s) !== nothing
+                @debugv 0 "Couldn't connect to Server $n but tunnel exists so ignoring. Destroy it manually to try creating a new one and reconnect."
+                continue
+            end
+            
+            @debugv 0 "Connection to $n: $(connections[n])" logtype=RuntimeLog
             
             connections[n] = @timeout 30 begin 
-                destroy_tunnel(s)
                 try
                     remote_server = load_config(s.username, s.domain, config_path(s))
                     remote_server === nothing && return false
