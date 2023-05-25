@@ -247,8 +247,9 @@ function install_julia(s::Server)
             finish!(spinner, ErrorException("Issue unpacking julia executable on cluster, please install julia manually"))
         end
         server_command(s, "rm $julia_tar")
-        
-        return "~/julia-1.8.5/bin/julia"
+        s.julia_exec = "~/julia-1.8.5/bin/julia"
+        save(s)
+        return s.julia_exec
     end
 end
 
@@ -274,6 +275,8 @@ function install(s::Server, julia_exec = s.julia_exec)
         if res.exitcode != 0
             finish!(spinner, ErrorException("Something went wrong installing RemoteHPC on server, please install manually"))
         end
+        
+        save(s)
     end
     @info "RemoteHPC installed on remote cluster, try starting the server with `start(server)`."
 end
