@@ -159,3 +159,13 @@ end
     @test !ispath(s, tname)
     @test !ispath(s, tname2)
 end
+
+@testset "spinner" begin
+    title = "test"
+    steps = ["test1", "test2"]
+    RemoteHPC.StepSpinner(title, steps,dt=0.1) do s
+        RemoteHPC.push!(s, "blabla")
+        RemoteHPC.next!(s)
+        RemoteHPC.push!(s, "test")
+    end
+end

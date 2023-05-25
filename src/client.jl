@@ -4,108 +4,150 @@
 Launches the daemon process on  the host [`Server`](@ref) `s`.
 """
 function start(s::Server; verbosity=0)
-    if !islocal(s) && !isalive(LOCAL_SERVER[])
-        @warn "Local server not running. Starting that first."
-        start(LOCAL_SERVER[])
-        if !isalive(LOCAL_SERVER[])
-            error("Couldn't start local server.")
-        end
-    end
-    alive = isalive(s)
-    @assert !alive "Server is already up and running."
-    @debug "Starting:\n$s"
-    hostname = gethostname(s)
-    conf_path = config_path(s)
-    t = server_command(s, "ls $(conf_path)")
-    if t.exitcode != 0
-        error("RemoteHPC not installed on server. Install it using `RemoteHPC.install_RemoteHPC(Server(\"$(s.name)\"))`")
-    end
+
     
-    if islocal(s)
-        t = ispath(config_path("self_destruct"))
-    else
-        cmd = "cat $(conf_path)/$hostname/self_destruct"
-        t = server_command(s, cmd).exitcode == 0
-    end
-
-    @assert !t "Self destruction was previously triggered, signalling issues on the Server.\nPlease investigate and if safe, remove $(conf_path)/self_destruct"
-
-    if !islocal(s)
-        t = deepcopy(s)
-        t.domain = "localhost"
-        t.name = hostname
-        tf = tempname()
-        JSON3.write(tf, t)
-        push(tf, s, "$(conf_path)/$hostname/storage/servers/$hostname.json")
-    end
-
-    # Here we check what the modify time of the server-side localhost file is.
-    # The server will rewrite the file with the correct port, which we use to see
-    # whether the server started succesfully.
-    function checktime()
-        curtime = 0
-        if islocal(s)
-            return mtime(config_path("storage", "servers", "$(hostname).json"))
-        else
-            cmd = "stat -c %Z  $(conf_path)/$hostname/storage/servers/$(hostname).json"
-            return parse(Int, server_command(s.username, s.domain, cmd)[1])
+    title = "Starting Server($(s.name))"
+    steps = ["Verifying that local server is running",
+             "Verifying that the server isn't already alive",
+             "Starting server",
+             "Waiting for server connection"]
+    
+    StepSpinner(title, steps) do spinner
+        
+    
+        if !islocal(s) && !isalive(LOCAL_SERVER[])
+            push!(spinner, "Starting local server.")
+            start(LOCAL_SERVER[])
+            if !isalive(LOCAL_SERVER[])
+                finish!(spinner, ErrorException("Couldn't start local server."))
+            end
         end
-        return curtime
-    end
-    firstime = checktime()
+        push!(spinner, "local server running")
 
-    p = "$(conf_path)/$hostname/logs/errors.log"
-    scrpt = "using RemoteHPC; RemoteHPC.julia_main(verbose=$(verbosity))"
-    if s.domain != "localhost"
-        julia_cmd = replace("""$(s.julia_exec) --project=$(conf_path) --startup-file=no -t 10 -e "using RemoteHPC; RemoteHPC.julia_main(verbose=$(verbosity))" &> $p""",
-                            "'" => "")
-        if Sys.which("ssh") === nothing
-            OpenSSH_jll.ssh() do ssh_exec
-                run(Cmd(`$ssh_exec -f $(ssh_string(s)) $julia_cmd`; detach = true))
+        next!(spinner)
+        
+        alive = isalive(s) || get(JSON3.read(check_connections(names=[s.name]).body), Symbol(s.name), false)
+        if alive
+            push!(spinner, "Server is already up and running.")
+            finish!(spinner)
+            return
+        end
+
+        next!(spinner)
+        
+        hostname  = gethostname(s)
+        conf_path = config_path(s)
+        t = server_command(s, "ls $(conf_path)")
+        
+        if t.exitcode != 0
+            
+            finish!(spinner, ErrorException("RemoteHPC not installed on server. Install it using `RemoteHPC.install(Server(\"$(s.name)\"))`"))
+            
+        end
+        
+        if islocal(s)
+            self_destructed = ispath(config_path("self_destruct"))
+            
+        else
+            cmd = "cat $(conf_path)/$hostname/self_destruct"
+            self_destructed = server_command(s, cmd).exitcode == 0
+            
+        end
+        
+        if self_destructed
+            finish!(spinner,
+                    ErrorException("""Self destruction was previously triggered, signalling issues on the Server.
+                                      Please investigate and if safe, remove $(conf_path)/self_destruct"""))
+        end
+
+        if !islocal(s)
+            t = deepcopy(s)
+            t.domain = "localhost"
+            t.name = hostname
+            tf = tempname()
+            JSON3.write(tf, t)
+            push(tf, s, "$(conf_path)/$hostname/storage/servers/$hostname.json")
+        end
+        
+        # Here we check what the modify time of the server-side localhost file is.
+        # The server will rewrite the file with the correct port, which we use to see
+        # whether the server started succesfully.
+        function checktime()
+            curtime = 0
+            if islocal(s)
+                return mtime(config_path("storage", "servers", "$(hostname).json"))
+            else
+                cmd = "stat -c %Z  $(conf_path)/$hostname/storage/servers/$(hostname).json"
+                return parse(Int, server_command(s.username, s.domain, cmd)[1])
+            end
+            return curtime
+        end
+        firstime = checktime()
+
+        p = "$(conf_path)/$hostname/logs/errors.log"
+        scrpt = "using RemoteHPC; RemoteHPC.julia_main(verbose=$(verbosity))"
+        
+        if s.domain != "localhost"
+            julia_cmd = replace("""$(s.julia_exec) --project=$(conf_path) --startup-file=no -t 10 -e "using RemoteHPC; RemoteHPC.julia_main(verbose=$(verbosity))" &> $p""",
+                                "'" => "")
+            if Sys.which("ssh") === nothing
+                OpenSSH_jll.ssh() do ssh_exec
+                    run(Cmd(`$ssh_exec -f $(ssh_string(s)) $julia_cmd`; detach = true))
+                end
+            else
+                run(Cmd(`ssh -f $(ssh_string(s)) $julia_cmd`; detach = true))
             end
         else
-            run(Cmd(`ssh -f $(ssh_string(s)) $julia_cmd`; detach = true))
+            e = s.julia_exec * " --project=$(conf_path)"
+            julia_cmd = Cmd([string.(split(e))..., "--startup-file=no", "-t", "auto", "-e",
+                             scrpt, "&>", p, "&"])
+            run(Cmd(julia_cmd; detach = true); wait = false)
         end
-    else
-        e = s.julia_exec * " --project=$(conf_path)"
-        julia_cmd = Cmd([string.(split(e))..., "--startup-file=no", "-t", "auto", "-e",
-                         scrpt, "&>", p, "&"])
-        run(Cmd(julia_cmd; detach = true); wait = false)
-    end
 
-    #TODO: little hack here
-    retries = 0
-    prog = ProgressUnknown("Waiting for server bootup:"; spinner = true)
-    while checktime() <= firstime && retries < 60
-        ProgressMeter.next!(prog; spinner = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏", showvalues = [(:try, retries)])
-        retries += 1
-        sleep(1)
-    end
-    finish!(prog)
-
-    if retries == 60
-        error("Something went wrong starting the server.")
-    else
+        retries = 0
+        push!(spinner, "Waiting for server bootup")
+        
+        while checktime() <= firstime && retries < 60
+            retries += 1
+            sleep(1)
+        end
+        
+        if retries == 60
+            finish!(spinner, ErrorException("Something went wrong starting the server."))
+        end
+        
+        next!(spinner)
+        
         cfg = load_config(s)
         s.port = cfg.port
         s.uuid = cfg.uuid
         
-        @debug "Daemon on Server $(s.name) started, listening on local port $(s.port)."
-        @debug "Saving updated server info..."
         save(s)
-    end
-    if islocal(s)
-        while !isalive(s)
-            sleep(0.1)
+
+        retries = 0
+        
+        if islocal(s)
+            while !isalive(s) && retries < 60
+                sleep(0.1)
+                retries += 1
+            end
+            LOCAL_SERVER[] = local_server()
+            
+        else
+            check_connections(; names=[s.name])
+            while !isalive(s) && retries < 60
+                sleep(0.1)
+            end
         end
-        LOCAL_SERVER[] = local_server()
-    else
-        check_connections(; names=[s.name])
-        while !isalive(s)
-            sleep(0.1)
+        
+        if retries == 60
+            finish!(spinner, ErrorException("""Couldn't set up server connection.
+                                               This can be because the daemon crashed
+                                               or because the local server can't setup a ssh tunnel to it"""))
         end
+        
+        return s
     end
-    return s
 end
 
 """

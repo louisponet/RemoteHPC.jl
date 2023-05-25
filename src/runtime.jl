@@ -279,12 +279,13 @@ end
 
 function check_connections!(connections, verify_tunnels; names=keys(connections))
     @debug "Checking connections..." logtype=RuntimeLog
-    for (n, connected) in connections
+    
+    for n in names
         if !exists(Server(name=n))
             pop!(connections, n)
             continue
         end
-        !(n in names) && continue
+        
         s = load(Server(n))
         s.domain == "localhost" && continue
         
@@ -296,22 +297,20 @@ function check_connections!(connections, verify_tunnels; names=keys(connections)
             connections[n] = false
         end
     end
+    
     if verify_tunnels
         @debugv 1 "Verifying tunnels" logtype=RuntimeLog
-        for (n, connected) in connections
-            connected && continue
-            !(n in names) && continue
+        for n in names
+            
+            connections[n] && continue
+            
             s = load(Server(n))
             s.domain == "localhost" && continue
-
-            if find_tunnel(s) !== nothing
-                @debugv 0 "Couldn't connect to Server $n but tunnel exists so ignoring. Destroy it manually to try creating a new one and reconnect."
-                continue
-            end
             
             @debugv 0 "Connection to $n: $(connections[n])" logtype=RuntimeLog
             
             connections[n] = @timeout 30 begin 
+                destroy_tunnel(s)
                 try
                     remote_server = load_config(s.username, s.domain, config_path(s))
                     remote_server === nothing && return false
@@ -336,20 +335,26 @@ function check_connections!(connections, verify_tunnels; names=keys(connections)
             end false
         end
     end
+    
     return connections
 end
 
 function check_connections!(server_data::ServerData, args...; kwargs...)
     all_servers = load(Server(""))
+    
     for k in filter(x-> !(x in all_servers), keys(server_data.connections))
         delete!(server_data.connections, k)
     end
+    
     for n in all_servers
         n == server_data.server.name && continue
         server_data.connections[n] = get(server_data.connections, n, false)
     end
+    
     conn = check_connections!(server_data.connections, args...; kwargs...)
+    
     @debugv 1 "Connections: $(server_data.connections)" logtype=RuntimeLog
+    
     return conn
 end
     
@@ -376,10 +381,10 @@ function julia_main(;verbose=0, kwargs...)::Cint
                 connection_task = Threads.@spawn @stoppable server_data.stop begin
                     @debug "Checking Connections" logtype=RuntimeLog
                     try
-                        check_connections!(server_data, true)
+                        check_connections!(server_data, false)
                         while true
                             t = time()
-                            check_connections!(server_data, true)
+                            check_connections!(server_data, false)
                             sleep_t = 5 - (time() - t)
                             if sleep_t > 0
                                 sleep(sleep_t)

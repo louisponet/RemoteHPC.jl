@@ -125,7 +125,7 @@ function configure!(s::Server; interactive = true)
                 yn_id == -1 && return 
                 if yn_id == 1
                     s.julia_exec = install_julia(s)
-                    install_RemoteHPC(s)
+                    install(s)
                 else
                     @debug """
                     You will need to install julia, e.g. by using `RemoteHPC.install_julia` or manually on the cluster.
@@ -173,7 +173,7 @@ function configure!(s::Server; interactive = true)
     conf_path = config_path(s)
     t = server_command(s, "ls $(conf_path)")
     if t.exitcode != 0
-        install_RemoteHPC(s)
+        install(s)
     end
     s.uuid = string(uuid4())
     return s
@@ -220,99 +220,208 @@ end
 
 # TODO use versions.json from main julia site
 function install_julia(s::Server)
+    
     julia_tar = "julia-1.8.5-linux-x86_64.tar.gz"
-    p = ProgressUnknown("Installing julia on Server $(s.name) ($(s.username)@$(s.domain))...", spinner=true)
-    t = tempname()
-    mkdir(t)
-    next!(p, showvalues = [("step [1/3]", "downloading")])
-    download("https://julialang-s3.julialang.org/bin/linux/x64/1.8/julia-1.8.5-linux-x86_64.tar.gz",
+    
+    title = "Installing julia on Server $(s.name) ($(s.username)@$(s.domain))..."
+    steps = ["downloading locally",
+             "pushing to remote",
+             "unpacking on remote"]
+             
+    StepSpinner(title, steps) do spinner
+        t = tempname()
+        mkdir(t)
+        download("https://julialang-s3.julialang.org/bin/linux/x64/1.8/julia-1.8.5-linux-x86_64.tar.gz",
              joinpath(t, "julia.tar.gz"))
-    next!(p, showvalues = [("step [2/3]", "pushing")])
-    push(joinpath(t, "julia.tar.gz"), s, julia_tar)
-    rm(t; recursive = true)
-    next!(p, showvalues = [("step [3/3]", "unpacking")])
-    res = server_command(s, "tar -xf $julia_tar")
-    server_command(s, "rm $julia_tar")
-    finish!(p)
-    @assert res.exitcode == 0 "Issue unpacking julia executable on cluster, please install julia manually"
-    @debug "julia installed on Server $(s.name) in ~/julia-1.8.5/bin"
-    return "~/julia-1.8.5/bin/julia"
-end
-
-function install_RemoteHPC(s::Server, julia_exec = s.julia_exec)
-    # We install the latest version of julia in the homedir
-    res = server_command(s, "which $julia_exec")
-    if res.exitcode != 0
-        julia_exec = install_julia(s) 
-    else
-        julia_exec = res.stdout[1:end-1]
-    end
-    @info "Installing RemoteHPC"
-    s.julia_exec = julia_exec
-    res = julia_cmd(s, "using Pkg; Pkg.activate(joinpath(Pkg.depots()[1], \"config/RemoteHPC\")); Pkg.add(\"RemoteHPC\");Pkg.build(\"RemoteHPC\")")
-    @assert res.exitcode == 0 "Something went wrong installing RemoteHPC on server, please install manually"
-
-    @info "RemoteHPC installed on remote cluster, try starting the server with `start(server)`."
-    return
-end
-
-function update_RemoteHPC(s::Server)
-    p = ProgressUnknown("Updating RemoteHPC on Server $(s.name) ($(s.username)@$(s.domain))...", spinner=true, dt=0.0)
-    curvals = [("step [1/3]", "Checking server status")]
-    finished = false
-    ptsk = Threads.@spawn begin
-        while !finished
-            next!(p, showvalues = curvals, spinner="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
-            sleep(0.1)
-        end
-    end
-    v = nothing
-    try
-        v = version(s)
-        curvals = [("step [1/3]", "Current version $v")]
-    catch
-        curvals = [("step [1/3]", "Current version could not be determined")]
-    end
+             
+        next!(spinner)
         
-    alive = isalive(s)
-    if alive
-        curvals = [("step [1/3]", "Server was alive, killing")]
-        kill(s)
-    end
-    curvals = [("step [2/3]", "Updating RemoteHPC")]
-    if islocal(s)
-        curproj = Pkg.project().path
-        Pkg.activate(joinpath(depot_path(s), "config/RemoteHPC"))
-        Pkg.update()
-        Pkg.activate(curproj)
-    else
-        curvals = [("step [2/3]", "Executing remote update command")]
-        res = julia_cmd(s, "using Pkg; Pkg.activate(joinpath(Pkg.depots()[1], \"config/RemoteHPC\"));  Pkg.update(\"RemoteHPC\")")
+        push(joinpath(t, "julia.tar.gz"), s, julia_tar)
+        
+        rm(t; recursive = true)
+        
+        next!(spinner)
+        
+        res = server_command(s, "tar -xf $julia_tar")
         if res.exitcode != 0
-            finished = true
-            fetch(ptsk)
-            finish!(p, spinner='✗')
-            error("Error while updating Server $(s.name):\nstdout: $(res.stdout) stderr: $(res.stderr) exitcode: $(res.exitcode)")
+            finish!(spinner, ErrorException("Issue unpacking julia executable on cluster, please install julia manually"))
         end
+        server_command(s, "rm $julia_tar")
+        
+        return "~/julia-1.8.5/bin/julia"
     end
-    curvals = [("step [3/3]", "Restarting Server if needed")]
-    if alive
-        @debug "Restarting server."
-        start(s)
-    end
-    finished = true
-    fetch(ptsk)
-    finish!(p)
-    if v !== nothing
-        newver = version(s)
-        if v == newver
-            @warn "Version did not update, is RemoteHPC installed from a fixed path on the Server?"
+end
+
+function install(s::Server, julia_exec = s.julia_exec)
+    # We install the latest version of julia in the homedir
+
+    title = "Installing RemoteHPC on remote"
+    steps = ["installing julia",
+             "installing RemoteHPC"]
+
+    StepSpinner(title, steps) do spinner
+        res = server_command(s, "which $julia_exec")
+        if res.exitcode != 0
+            julia_exec = install_julia(s) 
         else
-            @info "Version $v -> $newver"
+            julia_exec = res.stdout[1:end-1]
         end
+        next!(spinner)
+        
+        s.julia_exec = julia_exec
+        res = julia_cmd(s, "using Pkg; Pkg.activate(joinpath(Pkg.depots()[1], \"config/RemoteHPC\")); Pkg.add(\"RemoteHPC\");Pkg.build(\"RemoteHPC\")")
+        
+        if res.exitcode != 0
+            finish!(spinner, ErrorException("Something went wrong installing RemoteHPC on server, please install manually"))
+        end
+    end
+    @info "RemoteHPC installed on remote cluster, try starting the server with `start(server)`."
+end
+
+mutable struct StepSpinner
+    steps::Vector{String}
+    step_msgs::Vector{Vector{String}}
+    curstep::Int
+    dt::Float64
+    spinner::String
+    finished::Bool
+    prog::ProgressUnknown
+    t::Union{Task, Nothing}
+    showvalues::Vector{NTuple{2, String}}
+end
+
+function StepSpinner(title::String, steps::Vector{String}; dt=0.1, spinner = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+    step_msgs = [String[] for i = 1:length(steps)]
+
+    prog = ProgressUnknown(title, spinner=true, dt=0.0)
+    
+    out = StepSpinner(steps, step_msgs, 1, dt, spinner, false, prog, nothing, NTuple{2,String}[])
+
+    out.showvalues = showvalues(out)
+    return out
+end
+    
+Base.length(s::StepSpinner) = length(s.steps)
+
+function ProgressMeter.next!(s::StepSpinner) 
+    s.curstep += 1
+    s.showvalues = showvalues(s)
+end 
+
+function ProgressMeter.finish!(s::StepSpinner, msg=nothing)
+    s.finished = true
+    
+    if  s.t !== nothing && !istaskdone(s.t)
+        fetch(s.t)
+    end
+    
+    if msg isa AbstractString
+        finish!(s.prog; showvalues = ("SUCCESS", msg))
+    elseif msg === nothing
+        finish!(s.prog)
     else
-        @info "New version $(version(s))"
-    end 
+        finish!(s.prog; spinner = '✗')
+        throw(msg)
+    end
+end
+
+function showvalues(s::StepSpinner)
+    nsteps = length(s)
+    out  = NTuple{2, String}[]
+    for i = 1:s.curstep
+        
+        t = [("Step [$i/$nsteps]", s.steps[i])]
+        
+        for (im, msg) in enumerate(s.step_msgs[i])
+            push!(t, ("$im", msg))
+        end
+        append!(out, t)
+    end
+    
+    return out
+end
+
+function Base.push!(s::StepSpinner, msg::String)
+    curlen = length(s.step_msgs[s.curstep])
+    push!(s.step_msgs[s.curstep], msg)
+    
+    push!(s.showvalues, ("$(curlen+1)", msg))
+end
+
+function StepSpinner(f::Function, args...; kwargs...)
+    s = StepSpinner(args...; kwargs...)
+    s.t = Threads.@spawn begin
+        while !s.finished
+            next!(s.prog, showvalues = s.showvalues, spinner=s.spinner)
+            sleep(s.dt)
+        end
+    end
+    try
+        return f(s)
+    finally
+        finish!(s)
+    end
+end
+
+function update(s::Server)
+
+    title =  "Updating RemoteHPC on Server $(s.name) ($(s.username)@$(s.domain))..."
+    
+    steps = ["Checking server status",
+             "Updating RemoteHPC",
+             "Restarting Server if needed"]
+             
+    StepSpinner(title, steps, spinner= "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏", dt=0.1) do spinner
+        v = nothing
+        try
+            v = version(s)
+            push!(spinner, "Current version $v")
+        catch
+            push!(spinner, "Current version could not be determined")
+        end
+        
+        alive = isalive(s)
+        if alive
+            push!(spinner, curvals = "Server was alive, killing")
+            kill(s)
+        end
+        
+        next!(spinner)
+        
+        if islocal(s)
+            curproj = Pkg.project().path
+            Pkg.activate(joinpath(depot_path(s), "config/RemoteHPC"))
+            push!(spinner, "Executing local update command")
+            Pkg.update()
+            Pkg.activate(curproj)
+        else
+            push!(spinner, "Executing remote update command")
+            res = julia_cmd(s, "using Pkg; Pkg.activate(joinpath(Pkg.depots()[1], \"config/RemoteHPC\"));  Pkg.update(\"RemoteHPC\")")
+            if res.exitcode != 0
+                finish!(spinner, ErrorException("Error while updating Server $(s.name):\nstdout: $(res.stdout) stderr: $(res.stderr) exitcode: $(res.exitcode)"))
+            end
+        end
+
+        next!(spinner)
+        
+        if alive
+            push!(spinner, "Restarting server...")
+            start(s)
+        end
+
+        finish!(spinner)
+
+        if v !== nothing
+            newver = version(s)
+            if v == newver
+                @warn "Version did not update, is RemoteHPC installed from a fixed path on the Server?"
+            else
+                @info "Version $v -> $newver"
+            end
+        else
+            @info "New version $(version(s))"
+        end
+    end
 end
 
 Base.joinpath(s::Server, p...) = joinpath(s.jobdir, p...)
