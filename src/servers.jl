@@ -385,7 +385,7 @@ function update(s::Server)
         
         alive = isalive(s)
         if alive
-            push!(spinner, curvals = "Server was alive, killing")
+            push!(spinner, "Server was alive, killing")
             kill(s)
         end
         
