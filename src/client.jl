@@ -26,7 +26,7 @@ function start(s::Server; verbosity=0)
 
         next!(spinner)
         
-        alive = isalive(s) || get(JSON3.read(check_connections(names=[s.name]).body), Symbol(s.name), false)
+        alive = isalive(s) || (!islocal(s) && get(JSON3.read(check_connections(names=[s.name]).body), Symbol(s.name), false))
         if alive
             push!(spinner, "Server is already up and running.")
             finish!(spinner)
