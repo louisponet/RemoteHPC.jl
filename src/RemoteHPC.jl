@@ -12,7 +12,7 @@ using JSON3
 using UUIDs
 using Dates
 using ProgressMeter
-using SnoopPrecompile
+using PrecompileTools
 using Base: @kwdef
 using Pkg
 using InteractiveUtils
@@ -50,7 +50,7 @@ include("client.jl")
 include("io.jl")
 
 
-@precompile_all_calls begin
+@compile_workload begin
     s = local_server()
     isalive(local_server())
     t = "asdfe"
